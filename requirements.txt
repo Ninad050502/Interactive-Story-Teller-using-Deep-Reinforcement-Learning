@@ -14,3 +14,5 @@ scikit-learn==1.5.1
 # Optional (for exploration & visualization)
 jupyterlab==4.2.2
 matplotlib==3.9.0
+gymnasium==0.29.1
+stable-baselines3==2.3.2
