@@ -3,10 +3,11 @@ import numpy as np
 import torch
 import gymnasium as gym
 from gymnasium import spaces
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from dataset_loader import load_story
 from state_encoder import StateEncoder
 from reward_calculator import RewardCalculator
+from atomic_continuation_generator import AtomicContinuationGenerator
 
 
 # ----------- 1️⃣ Original StoryEnv (Legacy Support) -----------
@@ -15,7 +16,8 @@ class StoryEnv:
                  story_data: Optional[Dict] = None, 
                  next_prob: float = 0.7,
                  use_enhanced_rewards: bool = True,
-                 reward_weights: Optional[Dict[str, float]] = None):
+                 reward_weights: Optional[Dict[str, float]] = None,
+                 atomic_generator: Optional[AtomicContinuationGenerator] = None):
         """
         Initialize StoryEnv with either a story path or story data.
         
@@ -25,6 +27,7 @@ class StoryEnv:
             next_prob: Probability of following correct sequence
             use_enhanced_rewards: Whether to use enhanced reward calculation
             reward_weights: Optional reward weights for enhanced rewards
+            atomic_generator: Optional ATOMIC continuation generator
         """
         # Determine if we should use character features
         has_annotations = False
@@ -49,6 +52,11 @@ class StoryEnv:
         self.use_enhanced_rewards = use_enhanced_rewards and has_annotations
         self.reward_calculator = RewardCalculator(reward_weights=reward_weights) if self.use_enhanced_rewards else None
         
+        # ATOMIC integration
+        self.atomic_generator = atomic_generator
+        self.use_atomic = atomic_generator is not None
+        self.current_continuations: List[Tuple[str, str]] = []  # [(text, relation), ...]
+        
         self.next_prob = next_prob
         self.n_states = len(self.story)
         
@@ -70,6 +78,13 @@ class StoryEnv:
             if line_key in self.annotations['lines']:
                 char_info = self.annotations['lines'][line_key]
         
+        # Generate continuations for first step (if using ATOMIC)
+        if self.use_atomic and self.idx < self.n_states - 1:
+            true_next = self.story[self.idx + 1] if (self.idx + 1) < self.n_states else ""
+            self.current_continuations = self.atomic_generator.generate_alternatives(
+                state_text, true_next
+            )
+        
         state = self.encoder.encode(state_text, character_info=char_info)
         self.prev_state = state
         self.prev_char_info = char_info
@@ -82,16 +97,45 @@ class StoryEnv:
             return None, 0.0, True, {}
 
         prev_idx = self.idx
+        current_sentence = self.story[self.idx]
         
-        if random.random() < self.next_prob:
-            next_idx = self.idx + 1
+        # ATOMIC mode: select continuation based on action
+        if self.use_atomic and self.current_continuations:
+            # Action selects which continuation to use
+            if action < len(self.current_continuations):
+                selected_text, selected_relation = self.current_continuations[action]
+                is_true_next = (selected_relation == 'true')
+                
+                if is_true_next:
+                    # Follow true sequence
+                    next_idx = self.idx + 1
+                    if next_idx >= self.n_states:
+                        done = True
+                        return None, 0.0, True, {}
+                    self.idx = next_idx
+                    state_text = self.story[self.idx]
+                else:
+                    # Use ATOMIC alternative (treat as continuing but with alternative text)
+                    # For now, we'll advance index but note it's an alternative
+                    next_idx = min(self.idx + 1, self.n_states - 1)
+                    self.idx = next_idx
+                    state_text = selected_text  # Use the ATOMIC-generated continuation
+            else:
+                # Invalid action, default to true next
+                next_idx = min(self.idx + 1, self.n_states - 1)
+                self.idx = next_idx
+                state_text = self.story[self.idx] if self.idx < self.n_states else ""
         else:
-            next_idx = min(self.idx + random.choice([1, 2]), self.n_states - 1)
-
-        self.idx = next_idx
+            # Non-ATOMIC mode: use probability-based transitions
+            if random.random() < self.next_prob:
+                next_idx = self.idx + 1
+            else:
+                next_idx = min(self.idx + random.choice([1, 2]), self.n_states - 1)
+            
+            self.idx = next_idx
+            state_text = self.story[self.idx] if self.idx < self.n_states else ""
         
-        # Get current state and character info
-        state_text = self.story[self.idx]
+        # Get character info for current line
         char_info = None
         if self.annotations and 'lines' in self.annotations:
             line_key = str(self.idx + 1)  # Lines are 1-indexed
@@ -108,22 +152,37 @@ class StoryEnv:
                 prev_state=self.prev_state,
                 current_state=next_state,
                 prev_char_info=self.prev_char_info,
-                current_char_info=char_info
+                current_char_info=char_info,
+                is_true_next=(not self.use_atomic or (self.use_atomic and action == 0)),
+                is_ending=(self.idx == self.n_states - 1)
             )
         else:
             # Simple sequence reward
-            reward = 1.0 if next_idx == prev_idx + 1 else -1.0
+            if self.use_atomic:
+                is_true = (action == 0) if self.current_continuations else True
+                reward = 1.0 if is_true else 0.5  # Slight penalty for alternatives
+            else:
+                reward = 1.0 if (self.idx == prev_idx + 1) else -1.0
+        
+        # Generate continuations for next step (if using ATOMIC and not done)
+        if self.use_atomic and self.idx < self.n_states - 1:
+            true_next = self.story[self.idx + 1] if (self.idx + 1) < self.n_states else ""
+            self.current_continuations = self.atomic_generator.generate_alternatives(
+                state_text, true_next
+            )
         
         # Update previous state and character info
         self.prev_state = next_state
         self.prev_char_info = char_info
         
-        done = self.idx == self.n_states - 1
+        done = self.idx >= self.n_states - 1
         info = {
-            "line": self.story[self.idx],
+            "line": state_text,
             "story_id": self.story_id,
             "story_title": self.story_title,
-            "line_idx": self.idx
+            "line_idx": self.idx,
+            "is_atomic_alternative": (self.use_atomic and action > 0) if self.use_atomic else False,
+            "selected_relation": self.current_continuations[action][1] if (self.use_atomic and action < len(self.current_continuations)) else None
         }
         return next_state, reward, done, info
     
@@ -153,18 +212,29 @@ class StoryEnvGym(gym.Env):
     metadata = {"render.modes": ["human"]}
 
     def __init__(self, story_path: Optional[str] = None, 
-                 story_data: Optional[Dict] = None):
+                 story_data: Optional[Dict] = None,
+                 atomic_generator: Optional[AtomicContinuationGenerator] = None):
         """
         Initialize Gym environment.
         
         Args:
             story_path: Path to JSON story file (legacy support)
             story_data: Story dictionary from dataset (new format)
+            atomic_generator: Optional ATOMIC continuation generator
         """
         super().__init__()
-        self.inner_env = StoryEnv(story_path=story_path, story_data=story_data)
+        self.inner_env = StoryEnv(
+            story_path=story_path, 
+            story_data=story_data,
+            atomic_generator=atomic_generator
+        )
         self.state_dim = 768
-        self.action_space = spaces.Discrete(2)
+        # Action space: 2 without ATOMIC, 1 + num_alternatives with ATOMIC
+        if self.inner_env.use_atomic and self.inner_env.atomic_generator:
+            action_size = 1 + self.inner_env.atomic_generator.num_alternatives
+        else:
+            action_size = 2
+        self.action_space = spaces.Discrete(action_size)
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.state_dim,), dtype=np.float32
         )
@@ -174,10 +244,13 @@ class StoryEnvGym(gym.Env):
         return state.numpy().astype(np.float32), {}
 
     def step(self, action):
-        if action == 0:
-            self.inner_env.next_prob = 0.9
-        else:
-            self.inner_env.next_prob = 0.4
+        # In ATOMIC mode, action directly selects continuation
+        # In non-ATOMIC mode, action controls probability
+        if not self.inner_env.use_atomic:
+            if action == 0:
+                self.inner_env.next_prob = 0.9
+            else:
+                self.inner_env.next_prob = 0.4
 
         next_state, reward, done, info = self.inner_env.step(action)
         if next_state is None:
@@ -201,7 +274,8 @@ class MultiStoryEnvGym(gym.Env):
     metadata = {"render.modes": ["human"]}
     
     def __init__(self, dataset_manager, use_enhanced_rewards: bool = True,
-                 reward_weights: Optional[Dict[str, float]] = None):
+                 reward_weights: Optional[Dict[str, float]] = None,
+                 atomic_generator: Optional[AtomicContinuationGenerator] = None):
         """
         Initialize multi-story environment.
         
@@ -209,15 +283,22 @@ class MultiStoryEnvGym(gym.Env):
             dataset_manager: DatasetManager instance
             use_enhanced_rewards: Whether to use enhanced rewards
             reward_weights: Optional reward weights for enhanced rewards
+            atomic_generator: Optional ATOMIC continuation generator
         """
         super().__init__()
         self.dataset_manager = dataset_manager
         self.use_enhanced_rewards = use_enhanced_rewards
         self.reward_weights = reward_weights
+        self.atomic_generator = atomic_generator
         
         # Determine state dimension (will be updated when first story is loaded)
         self.state_dim = 768  # Default, will be updated if character features used
-        self.action_space = spaces.Discrete(2)
+        # Action space: 2 without ATOMIC, 1 + num_alternatives with ATOMIC
+        if atomic_generator:
+            action_size = 1 + atomic_generator.num_alternatives
+        else:
+            action_size = 2
+        self.action_space = spaces.Discrete(action_size)
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.state_dim,), dtype=np.float32
         )
@@ -234,7 +315,8 @@ class MultiStoryEnvGym(gym.Env):
             self.inner_env = StoryEnv(
                 story_data=self.current_story,
                 use_enhanced_rewards=self.use_enhanced_rewards,
-                reward_weights=self.reward_weights
+                reward_weights=self.reward_weights,
+                atomic_generator=self.atomic_generator
             )
             # Update state dimension based on encoder
             if hasattr(self.inner_env.encoder, 'include_character_features'):
@@ -265,10 +347,13 @@ class MultiStoryEnvGym(gym.Env):
     
     def step(self, action):
         """Take a step in the current story."""
-        if action == 0:
-            self.inner_env.next_prob = 0.9
-        else:
-            self.inner_env.next_prob = 0.4
+        # In ATOMIC mode, action directly selects continuation
+        # In non-ATOMIC mode, action controls probability
+        if not self.inner_env.use_atomic:
+            if action == 0:
+                self.inner_env.next_prob = 0.9
+            else:
+                self.inner_env.next_prob = 0.4
         
         next_state, reward, done, info = self.inner_env.step(action)
         

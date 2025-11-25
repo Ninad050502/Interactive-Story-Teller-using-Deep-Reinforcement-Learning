@@ -31,7 +31,9 @@ class RewardCalculator:
                        prev_state: Optional[torch.Tensor] = None,
                        current_state: Optional[torch.Tensor] = None,
                        prev_char_info: Optional[Dict] = None,
-                       current_char_info: Optional[Dict] = None) -> float:
+                       current_char_info: Optional[Dict] = None,
+                       is_true_next: bool = True,
+                       is_ending: bool = False) -> float:
         """
         Calculate total reward for a transition.
         
@@ -42,12 +44,14 @@ class RewardCalculator:
             current_state: Current state embedding (optional)
             prev_char_info: Previous line character annotations (optional)
             current_char_info: Current line character annotations (optional)
+            is_true_next: Whether the agent selected the true next continuation
+            is_ending: Whether this is the final line of the story
         
         Returns:
             Total reward value
         """
         # 1. Sequence reward (always calculated)
-        sequence_reward = self._calculate_sequence_reward(prev_idx, current_idx)
+        sequence_reward = self._calculate_sequence_reward(prev_idx, current_idx, is_true_next)
         
         # 2. Character consistency reward (if annotations available)
         char_reward = 0.0
@@ -63,30 +67,73 @@ class RewardCalculator:
                 prev_state, current_state
             )
         
+        # 4. Ending bonus (from proposal: +5 for reaching satisfying/joyful ending)
+        ending_bonus = 0.0
+        if is_ending:
+            # Check if ending is "good" (positive emotions or satisfying conclusion)
+            if current_char_info:
+                ending_bonus = self._calculate_ending_bonus(current_char_info)
+        
         # Weighted sum
         total_reward = (
             self.reward_weights['sequence'] * sequence_reward +
             self.reward_weights['character_consistency'] * char_reward +
-            self.reward_weights['narrative_coherence'] * coherence_reward
+            self.reward_weights['narrative_coherence'] * coherence_reward +
+            ending_bonus  # Ending bonus is not weighted (direct +5 as per proposal)
         )
         
         return total_reward
     
-    def _calculate_sequence_reward(self, prev_idx: int, current_idx: int) -> float:
+    def _calculate_sequence_reward(self, prev_idx: int, current_idx: int, is_true_next: bool = True) -> float:
         """
         Calculate reward for following correct story sequence.
         
         Args:
             prev_idx: Previous line index
             current_idx: Current line index
+            is_true_next: Whether the true next continuation was selected
         
         Returns:
-            +1.0 for correct sequence, -1.0 for skipping
+            +1.0 for correct sequence, -1.0 for skipping, 0.0 for ATOMIC alternatives
         """
-        if current_idx == prev_idx + 1:
+        if is_true_next and current_idx == prev_idx + 1:
             return 1.0
+        elif not is_true_next:
+            # ATOMIC alternative: slight penalty but not as bad as skipping
+            return 0.0
         else:
             return -1.0
+    
+    def _calculate_ending_bonus(self, char_info: Dict) -> float:
+        """
+        Calculate bonus for reaching a satisfying/joyful ending.
+        From proposal: +5 for reaching satisfying or joyful ending.
+        
+        Args:
+            char_info: Character annotations for the ending line
+        
+        Returns:
+            +5.0 for good endings, 0.0 otherwise
+        """
+        if not char_info or 'characters' not in char_info:
+            return 0.0
+        
+        # Check for positive emotions in ending
+        positive_emotions = {'joy', 'happiness', 'satisfaction', 'contentment', 'pleasure', 'excitement'}
+        
+        for char_name, char_data in char_info['characters'].items():
+            if not char_data.get('app', False):
+                continue
+            
+            emotions = char_data.get('emotion', {})
+            for ann_id, ann_data in emotions.items():
+                plutchik = ann_data.get('plutchik', [])
+                for emotion in plutchik:
+                    emotion_name = emotion.split(':')[0].lower()
+                    if emotion_name in positive_emotions:
+                        return 5.0  # +5 bonus for good ending
+        
+        return 0.0
     
     def _calculate_character_consistency(self, prev_char_info: Dict, 
                                         current_char_info: Dict) -> float:

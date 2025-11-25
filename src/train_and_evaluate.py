@@ -22,22 +22,32 @@ from dqn_train import DQNAgent, QNetwork, train_dqn_multi_story
 from dataset_manager import DatasetManager
 from story_env import MultiStoryEnvGym
 from training_utils import evaluate_agent
+from atomic_continuation_generator import create_atomic_generator
 
 
-def load_trained_agent(model_path: str, state_dim: int = 768):
+def load_trained_agent(model_path: str, state_dim: int = 768, action_size: int = None):
     """
     Load trained agent from saved model.
     
     Args:
         model_path: Path to saved model
         state_dim: State dimension (768 or 800)
+        action_size: Action size (2 without ATOMIC, 3+ with ATOMIC). 
+                     If None, will infer from config or saved model.
     
     Returns:
         DQNAgent instance with loaded weights
     """
+    # Determine action_size if not provided
+    if action_size is None:
+        if config and config.USE_ATOMIC:
+            action_size = 1 + config.ATOMIC_CONFIG['num_alternatives']  # 1 + 2 = 3
+        else:
+            action_size = 2
+    
     # Create agent with same config as training
     agent_config = config.AGENT_CONFIG.copy() if config else {
-        'action_size': 2,
+        'action_size': action_size,
         'gamma': 0.9,
         'lr': 1e-3,
         'batch_size': 32,
@@ -47,14 +57,38 @@ def load_trained_agent(model_path: str, state_dim: int = 768):
         'target_update_frequency': 10
     }
     agent_config['state_size'] = state_dim
+    agent_config['action_size'] = action_size  # Use correct action size
     
     agent = DQNAgent(**agent_config)
     
     # Load trained weights
     if os.path.exists(model_path):
-        agent.q_net.load_state_dict(torch.load(model_path, map_location='cpu'))
-        agent.target_net.load_state_dict(agent.q_net.state_dict())
-        print(f"✅ Loaded model from {model_path}")
+        checkpoint = torch.load(model_path, map_location='cpu')
+        
+        # Try to detect action_size from saved model as a sanity check
+        if 'net.4.bias' in checkpoint:
+            detected_action_size = checkpoint['net.4.bias'].shape[0]
+            if detected_action_size != action_size:
+                print(f"⚠️  Action size mismatch detected!")
+                print(f"   Config/Environment: {action_size}, Saved model: {detected_action_size}")
+                print(f"   Using action_size from saved model: {detected_action_size}")
+                
+                # Recreate agent with detected action_size
+                agent_config['action_size'] = detected_action_size
+                agent = DQNAgent(**agent_config)
+        
+        try:
+            agent.q_net.load_state_dict(checkpoint)
+            agent.target_net.load_state_dict(agent.q_net.state_dict())
+            final_action_size = agent_config.get('action_size', action_size)
+            print(f"✅ Loaded model from {model_path} (state_dim={state_dim}, action_size={final_action_size})")
+        except RuntimeError as e:
+            if "size mismatch" in str(e):
+                print(f"❌ Error loading model: {e}")
+                print(f"   Please ensure config.USE_ATOMIC matches the training configuration")
+                raise RuntimeError(f"Cannot load model: action_size mismatch. {e}")
+            else:
+                raise e
     else:
         raise FileNotFoundError(f"Model not found: {model_path}")
     
@@ -97,20 +131,31 @@ def evaluate_on_split(split: str, model_path: str,
     
     print(f"Loaded {len(dataset_manager)} stories from {split} split")
     
-    # Create environment
+    # Create ATOMIC generator if enabled
+    atomic_generator = None
+    if config and config.USE_ATOMIC:
+        atomic_generator = create_atomic_generator(config.ATOMIC_CONFIG)
+    
+    # Create environment first to get correct dimensions
     reward_weights = config.REWARD_WEIGHTS if config else None
     env = MultiStoryEnvGym(
         dataset_manager,
         use_enhanced_rewards=use_annotations,
-        reward_weights=reward_weights
+        reward_weights=reward_weights,
+        atomic_generator=atomic_generator
     )
     
-    # Get state dimension from environment
+    # Get state dimension and action size from environment
     state_dim = env.state_dim
-    print(f"State dimension: {state_dim}")
+    action_size = env.action_space.n  # Get action size from environment
+    print(f"State dimension: {state_dim} | Action size: {action_size}")
     
-    # Load trained agent
-    agent = load_trained_agent(model_path, state_dim=state_dim)
+    # Load trained agent with correct dimensions
+    agent = load_trained_agent(
+        model_path=model_path,
+        state_dim=state_dim,
+        action_size=action_size  # Pass action_size from environment
+    )
     
     # Evaluate agent (epsilon = 0, no exploration)
     print(f"\nEvaluating for {num_episodes} episodes (no exploration)...")
@@ -343,7 +388,7 @@ if __name__ == "__main__":
         test_episodes=TEST_EPISODES,
         eval_max_stories=EVAL_MAX_STORIES,
         use_annotations=config.USE_ANNOTATIONS if config else True,
-        skip_training=False  # Set to True to skip training and only evaluate
+        skip_training=True # Set to True to skip training and only evaluate
     )
     
     if results:

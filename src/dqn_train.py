@@ -19,6 +19,7 @@ except ImportError:
 
 from story_env import StoryEnvGym, MultiStoryEnvGym
 from dataset_manager import DatasetManager
+from atomic_continuation_generator import create_atomic_generator
 
 # ----------------- Q-Network -----------------
 class QNetwork(nn.Module):
@@ -53,9 +54,20 @@ class DQNAgent:
         self.target_update_frequency = target_update_frequency
         self.step_count = 0
 
-    def act(self, state):
+    def act(self, state, action_size=None):
+        """
+        Select action using epsilon-greedy policy.
+        
+        Args:
+            state: Current state
+            action_size: Optional action space size (for variable action spaces)
+        """
+        if action_size is None:
+            # Infer from Q-network output size
+            action_size = self.q_net.net[-1].out_features
+        
         if random.random() < self.epsilon:
-            return random.randrange(2)
+            return random.randrange(action_size)
         with torch.no_grad():
             q_vals = self.q_net(torch.tensor(state).float().unsqueeze(0))
         return torch.argmax(q_vals).item()
@@ -142,18 +154,26 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
         max_stories=max_stories
     )
     
+    # Create ATOMIC generator if enabled
+    atomic_generator = None
+    if config and config.USE_ATOMIC:
+        atomic_generator = create_atomic_generator(config.ATOMIC_CONFIG)
+        print(f"✅ ATOMIC integration enabled (mode: {config.ATOMIC_CONFIG['mode']})")
+    
     # Create environment with enhanced rewards if annotations are used
     reward_weights = config.REWARD_WEIGHTS if config else None
     env = MultiStoryEnvGym(
         dataset_manager,
         use_enhanced_rewards=use_annotations,
-        reward_weights=reward_weights
+        reward_weights=reward_weights,
+        atomic_generator=atomic_generator
     )
     
-    # Get actual state dimension from environment (may be 768 or 800)
+    # Get actual state dimension and action size from environment
     state_dim = env.state_dim
+    action_size = env.action_space.n  # Get action size from environment
     
-    # Create agent with correct state dimension
+    # Create agent with correct state dimension and action size
     agent_config = config.AGENT_CONFIG.copy() if config else {
         'action_size': 2,
         'gamma': 0.9,
@@ -165,6 +185,7 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
         'target_update_frequency': 10
     }
     agent_config['state_size'] = state_dim
+    agent_config['action_size'] = action_size  # Use environment's action size
     
     agent = DQNAgent(**agent_config)
     
@@ -173,8 +194,11 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
     episode_rewards = []
     
     print(f"\n🚀 Starting training on {len(dataset_manager)} stories...")
-    print(f"Episodes: {episodes} | State dim: {state_dim} | Epsilon: {agent.epsilon:.3f}")
-    print(f"Enhanced rewards: {use_annotations} | Reward weights: {reward_weights}\n")
+    print(f"Episodes: {episodes} | State dim: {state_dim} | Action size: {action_size} | Epsilon: {agent.epsilon:.3f}")
+    print(f"Enhanced rewards: {use_annotations} | Reward weights: {reward_weights}")
+    if atomic_generator:
+        print(f"ATOMIC: {config.ATOMIC_CONFIG['num_alternatives']} alternatives using {config.ATOMIC_CONFIG['relations']}")
+    print()
     
     # Metrics tracking
     best_avg_reward = float('-inf')
@@ -263,7 +287,8 @@ def train_dqn(episodes=100, use_dataset=True, max_stories=None):
 
 if __name__ == "__main__":
     # Check if config is available
-    if config and os.path.exists(config.CSV_STORIES_PATH):
+    # if config and os.path.exists(config.CSV_STORIES_PATH):
+    if config:
         print("Using multi-story dataset mode...")
         train_dqn(episodes=100, use_dataset=True, max_stories=10)  # Start with 10 stories for testing
     else:
