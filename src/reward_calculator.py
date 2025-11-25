@@ -69,7 +69,7 @@ class RewardCalculator:
         
         # 4. Ending bonus (from proposal: +5 for reaching satisfying/joyful ending)
         ending_bonus = 0.0
-        if is_ending:
+        if is_ending and is_true_next:
             # Check if ending is "good" (positive emotions or satisfying conclusion)
             if current_char_info:
                 ending_bonus = self._calculate_ending_bonus(current_char_info)

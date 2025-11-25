@@ -388,7 +388,7 @@ if __name__ == "__main__":
         test_episodes=TEST_EPISODES,
         eval_max_stories=EVAL_MAX_STORIES,
         use_annotations=config.USE_ANNOTATIONS if config else True,
-        skip_training=True # Set to True to skip training and only evaluate
+        skip_training=False # Set to True to skip training and only evaluate
     )
     
     if results:

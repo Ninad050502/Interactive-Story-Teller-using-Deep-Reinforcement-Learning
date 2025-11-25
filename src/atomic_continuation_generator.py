@@ -93,14 +93,13 @@ class AtomicContinuationGenerator:
     def _extract_event(self, sentence: str) -> str:
         """
         Extract the main event/action from a sentence.
-        Simple heuristic: take the main verb phrase.
+        Simple heuristic: clean up the sentence to be used in a template.
         """
-        # Simple extraction: take first 10 words or full sentence if shorter
-        words = sentence.split()
-        if len(words) <= 10:
-            return sentence
-        # Try to find a complete phrase
-        return ' '.join(words[:10])
+        # Clean up: lowercase, remove trailing punctuation
+        clean = sentence.strip()
+        if clean.endswith('.'):
+            clean = clean[:-1]
+        return clean.lower()
     
     def _query_atomic_file(self, event: str, relation: str) -> Optional[str]:
         """Query ATOMIC data from loaded file."""
@@ -151,31 +150,33 @@ class AtomicContinuationGenerator:
         event = self._extract_event(sentence)
         
         # Template-based generation based on relation type
+        # Updated to work better with full sentences as input
+        # Removed redundant verbs like "happened" or "occurred" since input is likely a full sentence
         templates = {
             'xEffect': [
-                f"Then {event.lower()} happened.",
-                f"This led to {event.lower()}.",
-                f"As a result, {event.lower()} occurred."
+                f"Because of that, {event}.",
+                f"Consequently, {event}.",
+                f"As a result, {event}."
             ],
             'xWant': [
-                f"They wanted to {event.lower()}.",
-                f"The desire to {event.lower()} grew.",
-                f"They hoped to {event.lower()}."
+                f"They wanted to make sure that {event}.",
+                f"It was their desire that {event}.",
+                f"They hoped that {event}."
             ],
             'xReact': [
-                f"They felt surprised by {event.lower()}.",
-                f"This made them react to {event.lower()}.",
-                f"They responded to {event.lower()}."
+                f"They felt emotional because {event}.",
+                f"It made them react when {event}.",
+                f"They responded to the fact that {event}."
             ],
             'xNeed': [
-                f"First, they needed to {event.lower()}.",
-                f"To do this, they required {event.lower()}.",
-                f"Beforehand, {event.lower()} was necessary."
+                f"But first, they needed to ensure {event}.",
+                f"To do this, it was required that {event}.",
+                f"Beforehand, {event} was necessary."
             ],
             'xIntent': [
-                f"They intended to {event.lower()}.",
-                f"The goal was to {event.lower()}.",
-                f"They planned to {event.lower()}."
+                f"It was their intention that {event}.",
+                f"The goal was that {event}.",
+                f"They planned for {event}."
             ]
         }
         
@@ -183,7 +184,7 @@ class AtomicContinuationGenerator:
             return random.choice(templates[relation])
         else:
             # Generic fallback
-            return f"Then {event.lower()}."
+            return f"Then {event}."
     
     def generate_alternatives(self, current_sentence: str, true_next: str) -> List[Tuple[str, str]]:
         """
