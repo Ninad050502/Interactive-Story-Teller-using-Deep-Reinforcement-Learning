@@ -67,3 +67,18 @@ CHECKPOINT_DIR = os.path.join(MODELS_DIR, "checkpoints")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 VERBOSE = True  # Print training progress
 
+# ATOMIC Integration Settings
+USE_ATOMIC = True  # Whether to use ATOMIC for alternative continuations
+ATOMIC_CONFIG = {
+    'mode': 'template',  # 'comet', 'file', or 'template'
+    'atomic_file_path': None,  # Path to ATOMIC TSV file (if mode='file')
+    'comet_model_name': None,  # HuggingFace model name (if mode='comet')
+    'num_alternatives': 2,  # Number of alternative continuations per step
+    'relations': ['xEffect', 'xWant', 'xReact']  # ATOMIC relations to use
+}
+
+# Action space settings (updated when ATOMIC is enabled)
+# Action 0 = true next line, Actions 1+ = ATOMIC alternatives
+DEFAULT_ACTION_SIZE = 2  # Without ATOMIC
+ATOMIC_ACTION_SIZE = 1 + ATOMIC_CONFIG['num_alternatives']  # With ATOMIC (1 true + N alternatives)
+

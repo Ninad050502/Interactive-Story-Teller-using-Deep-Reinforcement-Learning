@@ -1,6 +1,6 @@
 # Core scientific stack
 numpy==1.26.4
-pandas==2.2.2
+pandas==2.2.2  # Also used for ATOMIC file loading
 
 # Deep learning / embeddings
 torch==2.3.0
