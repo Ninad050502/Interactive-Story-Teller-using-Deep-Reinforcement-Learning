@@ -1,5 +1,9 @@
 venv/
 /models
-/__pycache__
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 /data/storycommonsense_data/
 .DS_Store

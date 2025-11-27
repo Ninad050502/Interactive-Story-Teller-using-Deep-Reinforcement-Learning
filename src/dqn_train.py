@@ -53,9 +53,19 @@ class DQNAgent:
         self.target_update_frequency = target_update_frequency
         self.step_count = 0
 
-    def act(self, state):
+    def act(self, state, action_size=None):
+        """
+        Select action using epsilon-greedy policy.
+        
+        Args:
+            state: Current state
+            action_size: Number of actions (if None, uses network output size)
+        """
+        if action_size is None:
+            action_size = self.q_net.net[-1].out_features
+        
         if random.random() < self.epsilon:
-            return random.randrange(2)
+            return random.randrange(action_size)
         with torch.no_grad():
             q_vals = self.q_net(torch.tensor(state).float().unsqueeze(0))
         return torch.argmax(q_vals).item()
@@ -121,7 +131,8 @@ def train_dqn_legacy(episodes=100, story_path="../data/story_sample.json"):
 # ----------------- Training Loop (Multi-Story) -----------------
 def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = None,
                           split: str = 'train', max_stories: Optional[int] = None,
-                          episodes: int = 1000, use_annotations: bool = False):
+                          episodes: int = 1000, use_annotations: bool = False,
+                          use_generation: bool = False):
     """
     Train DQN on multiple stories from dataset.
     
@@ -132,6 +143,7 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
         max_stories: Optional maximum number of stories to use
         episodes: Number of training episodes
         use_annotations: Whether to use annotations (for future enhancement)
+        use_generation: Whether to use story generation (multi-choice mode)
     """
     # Load dataset
     print(f"Loading dataset from {csv_path}...")
@@ -147,15 +159,16 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
     env = MultiStoryEnvGym(
         dataset_manager,
         use_enhanced_rewards=use_annotations,
-        reward_weights=reward_weights
+        reward_weights=reward_weights,
+        use_generation=use_generation
     )
     
-    # Get actual state dimension from environment (may be 768 or 800)
+    # Get actual state dimension and action size from environment
     state_dim = env.state_dim
+    action_size = env.action_space.n  # 3 if generation, 2 otherwise
     
-    # Create agent with correct state dimension
+    # Create agent with correct state dimension and action size
     agent_config = config.AGENT_CONFIG.copy() if config else {
-        'action_size': 2,
         'gamma': 0.9,
         'lr': 1e-3,
         'batch_size': 32,
@@ -165,6 +178,7 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
         'target_update_frequency': 10
     }
     agent_config['state_size'] = state_dim
+    agent_config['action_size'] = action_size
     
     agent = DQNAgent(**agent_config)
     
@@ -173,8 +187,8 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
     episode_rewards = []
     
     print(f"\n🚀 Starting training on {len(dataset_manager)} stories...")
-    print(f"Episodes: {episodes} | State dim: {state_dim} | Epsilon: {agent.epsilon:.3f}")
-    print(f"Enhanced rewards: {use_annotations} | Reward weights: {reward_weights}\n")
+    print(f"Episodes: {episodes} | State dim: {state_dim} | Action size: {action_size} | Epsilon: {agent.epsilon:.3f}")
+    print(f"Enhanced rewards: {use_annotations} | Generation mode: {use_generation} | Reward weights: {reward_weights}\n")
     
     # Metrics tracking
     best_avg_reward = float('-inf')
@@ -187,7 +201,7 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
         done = False
         
         while not done:
-            a = agent.act(s)
+            a = agent.act(s, action_size=action_size)
             s2, r, done, _, info = env.step(a)
             agent.memorize(s, a, r, s2, done)
             agent.replay()
@@ -237,7 +251,7 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
     return rewards
 
 # ----------------- Main Training Function -----------------
-def train_dqn(episodes=100, use_dataset=True, max_stories=None):
+def train_dqn(episodes=100, use_dataset=True, max_stories=None, use_generation=False):
     """
     Main training function with automatic mode selection.
     
@@ -245,6 +259,7 @@ def train_dqn(episodes=100, use_dataset=True, max_stories=None):
         episodes: Number of episodes
         use_dataset: Whether to use multi-story dataset (True) or legacy single story (False)
         max_stories: Optional limit on number of stories (for testing)
+        use_generation: Whether to use story generation (multi-choice mode)
     """
     if use_dataset and config:
         # Use multi-story dataset
@@ -254,7 +269,8 @@ def train_dqn(episodes=100, use_dataset=True, max_stories=None):
             split=config.TRAIN_SPLIT,
             max_stories=max_stories or config.MAX_STORIES,
             episodes=episodes,
-            use_annotations=config.USE_ANNOTATIONS
+            use_annotations=config.USE_ANNOTATIONS,
+            use_generation=use_generation
         )
     else:
         # Legacy mode - single story
@@ -265,7 +281,9 @@ if __name__ == "__main__":
     # Check if config is available
     if config and os.path.exists(config.CSV_STORIES_PATH):
         print("Using multi-story dataset mode...")
-        train_dqn(episodes=100, use_dataset=True, max_stories=10)  # Start with 10 stories for testing
+        # Set use_generation=True to enable multi-choice story continuation
+        use_gen = getattr(config, 'USE_GENERATION', False)
+        train_dqn(episodes=100, use_dataset=True, max_stories=10, use_generation=use_gen)
     else:
         print("Using legacy single-story mode...")
         train_dqn(episodes=50, use_dataset=False)

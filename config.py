@@ -22,6 +22,7 @@ TRAIN_SPLIT = 'train'  # 'train', 'dev', or 'test'
 MAX_STORIES = None  # None = use all stories, or specify number for testing
 STORIES_PER_EPISODE = 1  # Number of stories to use per episode
 USE_ANNOTATIONS = True  # Whether to use character annotations
+USE_GENERATION = False  # Whether to use story generation (multi-choice mode: 1 true + 2 generated)
 
 # Reward weights
 REWARD_WEIGHTS = {
@@ -40,7 +41,7 @@ ENHANCED_STATE_DIM = STATE_DIM + CHARACTER_EMOTION_DIM + CHARACTER_MOTIVATION_DI
 # DQN Agent settings
 AGENT_CONFIG = {
     'state_size': STATE_DIM,  # Will be updated to ENHANCED_STATE_DIM in Phase 2
-    'action_size': 2,
+    'action_size': 2,  # Will be updated to 3 if USE_GENERATION=True
     'gamma': 0.9,
     'lr': 1e-3,
     'batch_size': 32,
@@ -48,6 +49,16 @@ AGENT_CONFIG = {
     'epsilon_decay': 0.995,
     'epsilon_min': 0.1,
     'target_update_frequency': 10  # Update target network every N episodes
+}
+
+# Story generation settings
+GENERATION_CONFIG = {
+    'model_name': 'gpt2',  # Language model for generation ('gpt2', 'distilgpt2', etc.)
+    'num_generated_options': 2,  # Number of generated continuations to create
+    'max_length': 50,  # Maximum length of generated text
+    'temperature_range': (0.6, 0.8),  # Lower temperature for better quality (was 0.7-0.9)
+    'filter_inappropriate': True,  # Filter inappropriate language
+    'max_attempts': 5  # Maximum attempts to generate acceptable continuations
 }
 
 # Training settings
