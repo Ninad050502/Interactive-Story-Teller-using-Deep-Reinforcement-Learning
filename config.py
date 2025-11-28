@@ -22,7 +22,9 @@ TRAIN_SPLIT = 'train'  # 'train', 'dev', or 'test'
 MAX_STORIES = None  # None = use all stories, or specify number for testing
 STORIES_PER_EPISODE = 1  # Number of stories to use per episode
 USE_ANNOTATIONS = True  # Whether to use character annotations
-USE_GENERATION = False  # Whether to use story generation (multi-choice mode: 1 true + 2 generated)
+USE_GENERATION = True  # Whether to use story generation (multi-choice mode: 1 true + 2 generated)
+USE_STOCHASTIC_EMOTIONS = True  # Whether to use stochastic emotional transitions
+INCLUDE_SCENE_INDEX = True  # Whether to include scene index in state encoding
 
 # Reward weights
 REWARD_WEIGHTS = {
@@ -36,7 +38,9 @@ STATE_DIM = 768  # Base sentence embedding dimension
 INCLUDE_CHARACTER_FEATURES = True  # Whether to include character features in state
 CHARACTER_EMOTION_DIM = 8  # Plutchik emotions (8 categories)
 CHARACTER_MOTIVATION_DIM = 24  # Maslow (5) + Reiss (19) = 24
-ENHANCED_STATE_DIM = STATE_DIM + CHARACTER_EMOTION_DIM + CHARACTER_MOTIVATION_DIM  # 800
+SCENE_INDEX_DIM = 1  # Scene index (normalized position in story)
+ENHANCED_STATE_DIM = STATE_DIM + CHARACTER_EMOTION_DIM + CHARACTER_MOTIVATION_DIM + SCENE_INDEX_DIM  # 801
+BASE_STATE_DIM = STATE_DIM + SCENE_INDEX_DIM  # 769 (without character features)
 
 # DQN Agent settings
 AGENT_CONFIG = {
