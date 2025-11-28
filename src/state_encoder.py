@@ -30,18 +30,21 @@ class StateEncoder:
                                 'romance', 'belonging', 'family', 'social contact',
                                 'health', 'savings', 'order', 'safety', 'food', 'rest']
 
-    def encode(self, text: str, character_info: Optional[Dict] = None) -> torch.Tensor:
+    def encode(self, text: str, character_info: Optional[Dict] = None, 
+               scene_index: Optional[float] = None) -> torch.Tensor:
         """
         Returns embedding for the input sentence.
         If include_character_features is True and character_info is provided,
         concatenates character features to the sentence embedding.
+        If scene_index is provided, includes it in the state.
         
         Args:
             text: Sentence text
             character_info: Optional dictionary with character annotations
+            scene_index: Optional normalized scene index (0.0 to 1.0)
         
         Returns:
-            Tensor of shape (768,) or (800,) if character features included
+            Tensor of shape (768,), (800,), (769,), or (801,) depending on features
         """
         with torch.no_grad():
             inputs = self.tokenizer(
@@ -52,9 +55,15 @@ class StateEncoder:
             embedding = outputs.last_hidden_state.mean(dim=1)
             sentence_embedding = embedding.squeeze(0)
         
+        # Add character features if available
         if self.include_character_features and character_info:
             char_features = self._encode_character_features(character_info)
-            return torch.cat([sentence_embedding, char_features])
+            sentence_embedding = torch.cat([sentence_embedding, char_features])
+        
+        # Add scene index if provided
+        if scene_index is not None:
+            scene_tensor = torch.tensor([scene_index], dtype=torch.float32)
+            sentence_embedding = torch.cat([sentence_embedding, scene_tensor])
         
         return sentence_embedding
     

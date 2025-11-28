@@ -99,10 +99,16 @@ def evaluate_on_split(split: str, model_path: str,
     
     # Create environment
     reward_weights = config.REWARD_WEIGHTS if config else None
+    # Get config settings
+    use_stochastic_emotions = getattr(config, 'USE_STOCHASTIC_EMOTIONS', True) if config else True
+    use_generation = getattr(config, 'USE_GENERATION', False) if config else False
+    
     env = MultiStoryEnvGym(
         dataset_manager,
         use_enhanced_rewards=use_annotations,
-        reward_weights=reward_weights
+        reward_weights=reward_weights,
+        use_generation=use_generation,
+        use_stochastic_emotions=use_stochastic_emotions
     )
     
     # Get state dimension from environment
@@ -176,6 +182,9 @@ def train_and_evaluate(training_episodes: int = 1000,
         json_path = config.JSON_ANNOTATIONS_PATH if config and use_annotations else None
         split = config.TRAIN_SPLIT if config else 'train'
         
+        # Get generation mode setting
+        use_generation = getattr(config, 'USE_GENERATION', False) if config else False
+        
         # Call the training function from dqn_train.py
         # This executes all the training code: data loading, embedding, training, saving
         training_rewards = train_dqn_multi_story(
@@ -184,7 +193,8 @@ def train_and_evaluate(training_episodes: int = 1000,
             split=split,
             max_stories=train_max_stories or (config.MAX_STORIES if config else None),
             episodes=training_episodes,
-            use_annotations=use_annotations
+            use_annotations=use_annotations,
+            use_generation=use_generation
         )
         
         # Calculate training metrics from rewards
@@ -333,6 +343,8 @@ if __name__ == "__main__":
     print(f"  Train max stories: {TRAIN_MAX_STORIES if TRAIN_MAX_STORIES else 'All'}")
     print(f"  Eval max stories: {EVAL_MAX_STORIES if EVAL_MAX_STORIES else 'All'}")
     print(f"  Use annotations: {config.USE_ANNOTATIONS if config else True}")
+    print(f"  Use generation: {config.USE_GENERATION if config else False}")
+    print(f"  Stochastic emotions: {config.USE_STOCHASTIC_EMOTIONS if config else True}")
     print("="*60)
     
     # Run complete pipeline

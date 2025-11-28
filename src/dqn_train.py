@@ -156,11 +156,17 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
     
     # Create environment with enhanced rewards if annotations are used
     reward_weights = config.REWARD_WEIGHTS if config else None
+    # Get config settings for stochastic emotions
+    use_stochastic_emotions = True
+    if config:
+        use_stochastic_emotions = getattr(config, 'USE_STOCHASTIC_EMOTIONS', True)
+    
     env = MultiStoryEnvGym(
         dataset_manager,
         use_enhanced_rewards=use_annotations,
         reward_weights=reward_weights,
-        use_generation=use_generation
+        use_generation=use_generation,
+        use_stochastic_emotions=use_stochastic_emotions
     )
     
     # Get actual state dimension and action size from environment

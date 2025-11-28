@@ -8,6 +8,7 @@ from dataset_loader import load_story
 from state_encoder import StateEncoder
 from reward_calculator import RewardCalculator
 from story_generator import StoryGenerator
+from emotional_transition import EmotionalTransitionModel
 
 
 # ----------- 1️⃣ Original StoryEnv (Legacy Support) -----------
@@ -18,7 +19,8 @@ class StoryEnv:
                  use_enhanced_rewards: bool = True,
                  reward_weights: Optional[Dict[str, float]] = None,
                  use_generation: bool = False,
-                 story_generator: Optional[StoryGenerator] = None):
+                 story_generator: Optional[StoryGenerator] = None,
+                 use_stochastic_emotions: bool = True):
         """
         Initialize StoryEnv with either a story path or story data.
         
@@ -30,6 +32,7 @@ class StoryEnv:
             reward_weights: Optional reward weights for enhanced rewards
             use_generation: Whether to use story generation (multi-choice mode)
             story_generator: StoryGenerator instance (created if None and use_generation=True)
+            use_stochastic_emotions: Whether to use stochastic emotional transitions
         """
         # Determine if we should use character features
         has_annotations = False
@@ -53,6 +56,13 @@ class StoryEnv:
         # Initialize reward calculator
         self.use_enhanced_rewards = use_enhanced_rewards and has_annotations
         self.reward_calculator = RewardCalculator(reward_weights=reward_weights) if self.use_enhanced_rewards else None
+        
+        # Initialize emotional transition model for stochastic emotions
+        self.use_stochastic_emotions = use_stochastic_emotions and has_annotations
+        if self.use_stochastic_emotions:
+            self.emotional_model = EmotionalTransitionModel()
+        else:
+            self.emotional_model = None
         
         # Initialize story generator if using generation mode
         self.use_generation = use_generation
@@ -88,6 +98,9 @@ class StoryEnv:
         self.generated_story = []
         self.current_options = []  # [true, generated1, generated2]
         
+        # Track if we should include scene index in state
+        self.include_scene_index = True  # Can be configurable
+        
         self.reset()
 
     def reset(self):
@@ -103,7 +116,10 @@ class StoryEnv:
             if line_key in self.annotations['lines']:
                 char_info = self.annotations['lines'][line_key]
         
-        state = self.encoder.encode(state_text, character_info=char_info)
+        # Calculate normalized scene index (0.0 = start, 1.0 = end)
+        scene_index = self.idx / max(1, self.n_states - 1) if self.include_scene_index else None
+        
+        state = self.encoder.encode(state_text, character_info=char_info, scene_index=scene_index)
         self.prev_state = state
         self.prev_char_info = char_info
         return state
@@ -179,9 +195,20 @@ class StoryEnv:
             if self.annotations and 'lines' in self.annotations:
                 line_key = str(self.idx + 1)  # Lines are 1-indexed
                 if line_key in self.annotations['lines']:
-                    char_info = self.annotations['lines'][line_key]
+                    base_char_info = self.annotations['lines'][line_key]
+                    
+                    # Apply stochastic emotional transitions if enabled
+                    if self.use_stochastic_emotions and self.emotional_model:
+                        char_info = self._apply_stochastic_emotions(
+                            base_char_info, action, selected_continuation
+                        )
+                    else:
+                        char_info = base_char_info
             
-            next_state = self.encoder.encode(selected_continuation, character_info=char_info)
+            # Calculate normalized scene index
+            scene_index = self.idx / max(1, self.n_states - 1) if self.include_scene_index else None
+            
+            next_state = self.encoder.encode(selected_continuation, character_info=char_info, scene_index=scene_index)
             
             # Calculate reward based on agent's choice
             reward = self._calculate_generation_reward(
@@ -210,9 +237,20 @@ class StoryEnv:
             if self.annotations and 'lines' in self.annotations:
                 line_key = str(self.idx + 1)  # Lines are 1-indexed
                 if line_key in self.annotations['lines']:
-                    char_info = self.annotations['lines'][line_key]
+                    base_char_info = self.annotations['lines'][line_key]
+                    
+                    # Apply stochastic emotional transitions if enabled
+                    if self.use_stochastic_emotions and self.emotional_model:
+                        char_info = self._apply_stochastic_emotions(
+                            base_char_info, action, state_text
+                        )
+                    else:
+                        char_info = base_char_info
             
-            next_state = self.encoder.encode(state_text, character_info=char_info)
+            # Calculate normalized scene index
+            scene_index = self.idx / max(1, self.n_states - 1) if self.include_scene_index else None
+            
+            next_state = self.encoder.encode(state_text, character_info=char_info, scene_index=scene_index)
             
             # Calculate reward
             if self.use_enhanced_rewards and self.reward_calculator:
@@ -228,18 +266,32 @@ class StoryEnv:
                 # Simple sequence reward
                 reward = 1.0 if next_idx == prev_idx + 1 else -1.0
         
+        # Check if story ended and add ending quality reward
+        done = self.idx == self.n_states - 1
+        ending_reward = 0.0
+        if done:
+            # Detect ending quality and add +5 reward for good endings
+            story_so_far = self.generated_story if self.use_generation else self.story
+            ending_quality = self._detect_ending_quality(story_so_far, char_info)
+            if ending_quality > 0.6:  # Threshold for "good" ending
+                ending_reward = 5.0 * ending_quality  # Up to +5.0 reward
+        
+        # Add ending reward to total
+        reward += ending_reward
+        
         # Update previous state and character info
         self.prev_state = next_state
         self.prev_char_info = char_info
         
-        done = self.idx == self.n_states - 1
         info = {
             "line": self.generated_story[-1] if self.use_generation else self.story[self.idx],
             "story_id": self.story_id,
             "story_title": self.story_title,
             "line_idx": self.idx,
             "chose_true": action == 0 if self.use_generation and self.current_options else None,
-            "options": self.current_options if self.use_generation else None
+            "options": self.current_options if self.use_generation else None,
+            "ending_quality": ending_quality if done else None,
+            "ending_reward": ending_reward if done else 0.0
         }
         return next_state, reward, done, info
     
@@ -328,6 +380,128 @@ class StoryEnv:
         
         return max(0.0, min(1.0, reward))
     
+    def _apply_stochastic_emotions(self, base_char_info: Dict, action: int, 
+                                  context_text: str) -> Dict:
+        """
+        Apply stochastic emotional transitions to character info.
+        
+        Args:
+            base_char_info: Base character info from annotations
+            action: Agent's action
+            context_text: Current story context
+        
+        Returns:
+            Modified character info with stochastic emotions
+        """
+        if not self.emotional_model or not base_char_info:
+            return base_char_info
+        
+        # Create a copy to modify
+        modified_char_info = base_char_info.copy()
+        
+        if 'characters' in base_char_info:
+            modified_char_info['characters'] = {}
+            
+            for char_name, char_data in base_char_info['characters'].items():
+                if not char_data.get('app', False):
+                    modified_char_info['characters'][char_name] = char_data
+                    continue
+                
+                # Get current emotion vector from annotation
+                emotion_data = char_data.get('emotion', {})
+                if emotion_data:
+                    # Encode current emotion
+                    current_emotion_vector = self.encoder._encode_emotions(
+                        {char_name: char_data}
+                    )
+                    
+                    # Sample stochastic emotion outcome
+                    sampled_emotion = self.emotional_model.sample_emotion_from_annotation(
+                        current_emotion_vector,
+                        action_type=f"action_{action}"
+                    )
+                    
+                    # Convert sampled emotion vector back to annotation format
+                    # Find dominant emotion
+                    plutchik_emotions = ['joy', 'trust', 'fear', 'surprise', 
+                                        'sadness', 'disgust', 'anger', 'anticipation']
+                    dominant_idx = torch.argmax(sampled_emotion).item()
+                    dominant_emotion = plutchik_emotions[dominant_idx]
+                    intensity = sampled_emotion[dominant_idx].item()
+                    
+                    # Update emotion in character data
+                    new_char_data = char_data.copy()
+                    # Create new emotion annotation with sampled emotion
+                    new_emotion_data = {
+                        'stochastic': {
+                            'plutchik': [f"{dominant_emotion}:{int(intensity * 3)}"]
+                        }
+                    }
+                    new_char_data['emotion'] = new_emotion_data
+                    modified_char_info['characters'][char_name] = new_char_data
+                else:
+                    modified_char_info['characters'][char_name] = char_data
+        
+        return modified_char_info
+    
+    def _detect_ending_quality(self, story: List[str], char_info: Optional[Dict] = None) -> float:
+        """
+        Detect and evaluate story ending quality.
+        
+        Args:
+            story: Complete story (list of sentences)
+            char_info: Character info for ending (optional)
+        
+        Returns:
+            Quality score (0.0 to 1.0) for ending reward calculation
+        """
+        if not story or len(story) < 2:
+            return 0.0
+        
+        ending_sentence = story[-1].lower()
+        
+        # Positive indicators (joyful/satisfying endings)
+        positive_keywords = [
+            'laughed', 'smiled', 'happy', 'joy', 'celebrated', 'succeeded',
+            'won', 'achieved', 'reunited', 'together', 'peace', 'love',
+            'grateful', 'thankful', 'proud', 'accomplished', 'fulfilled'
+        ]
+        
+        # Negative indicators (sad/unsatisfying endings)
+        negative_keywords = [
+            'cried', 'sad', 'lost', 'failed', 'died', 'left', 'alone',
+            'regret', 'disappointed', 'angry', 'frustrated', 'defeated'
+        ]
+        
+        # Check for positive indicators
+        positive_score = sum(1 for keyword in positive_keywords if keyword in ending_sentence)
+        negative_score = sum(1 for keyword in negative_keywords if keyword in ending_sentence)
+        
+        # Check character emotions if available
+        emotion_score = 0.0
+        if char_info and 'characters' in char_info:
+            for char_data in char_info['characters'].values():
+                emotion_data = char_data.get('emotion', {})
+                if emotion_data:
+                    for ann_data in emotion_data.values():
+                        plutchik = ann_data.get('plutchik', [])
+                        # Check for positive emotions
+                        if any('joy' in e or 'trust' in e or 'anticipation' in e for e in plutchik):
+                            emotion_score += 0.3
+                        # Check for negative emotions
+                        if any('sadness' in e or 'anger' in e or 'fear' in e for e in plutchik):
+                            emotion_score -= 0.2
+        
+        # Calculate quality score
+        quality = 0.5  # Base
+        if positive_score > 0:
+            quality += min(0.4, positive_score * 0.1)
+        if negative_score > 0:
+            quality -= min(0.3, negative_score * 0.1)
+        quality += emotion_score
+        
+        return max(0.0, min(1.0, quality))
+    
     def set_story(self, story_data: Dict):
         """Set a new story (for multi-story training)."""
         self.story = story_data['lines']
@@ -404,7 +578,8 @@ class MultiStoryEnvGym(gym.Env):
     def __init__(self, dataset_manager, use_enhanced_rewards: bool = True,
                  reward_weights: Optional[Dict[str, float]] = None,
                  use_generation: bool = False,
-                 story_generator: Optional[StoryGenerator] = None):
+                 story_generator: Optional[StoryGenerator] = None,
+                 use_stochastic_emotions: bool = True):
         """
         Initialize multi-story environment.
         
@@ -420,6 +595,7 @@ class MultiStoryEnvGym(gym.Env):
         self.use_enhanced_rewards = use_enhanced_rewards
         self.reward_weights = reward_weights
         self.use_generation = use_generation
+        self.use_stochastic_emotions = use_stochastic_emotions
         
         # Initialize story generator if using generation mode
         if use_generation:
@@ -444,7 +620,8 @@ class MultiStoryEnvGym(gym.Env):
             self.story_generator = None
         
         # Determine state dimension (will be updated when first story is loaded)
-        self.state_dim = 768  # Default, will be updated if character features used
+        # Base: 768 (DistilBERT) + 32 (character features if enabled) + 1 (scene index)
+        self.state_dim = 769  # Default: 768 + 1 scene index, will be updated if character features used
         # Action space: 3 if generation, 2 otherwise
         self.action_space = spaces.Discrete(3 if use_generation else 2)
         self.observation_space = spaces.Box(
@@ -465,14 +642,16 @@ class MultiStoryEnvGym(gym.Env):
                 use_enhanced_rewards=self.use_enhanced_rewards,
                 reward_weights=self.reward_weights,
                 use_generation=self.use_generation,
-                story_generator=self.story_generator
+                story_generator=self.story_generator,
+                use_stochastic_emotions=self.use_stochastic_emotions
             )
             # Update state dimension based on encoder
+            # Base: 768 (DistilBERT) + 32 (character features if enabled) + 1 (scene index)
             if hasattr(self.inner_env.encoder, 'include_character_features'):
                 if self.inner_env.encoder.include_character_features:
-                    self.state_dim = 800  # 768 + 32 character features
+                    self.state_dim = 801  # 768 + 32 character features + 1 scene index
                 else:
-                    self.state_dim = 768
+                    self.state_dim = 769  # 768 + 1 scene index
                 self.observation_space = spaces.Box(
                     low=-np.inf, high=np.inf, shape=(self.state_dim,), dtype=np.float32
                 )
@@ -483,11 +662,12 @@ class MultiStoryEnvGym(gym.Env):
             if self.use_generation and not self.inner_env.story_generator:
                 self.inner_env.story_generator = self.story_generator
             # Update state dimension if needed
+            # Base: 768 (DistilBERT) + 32 (character features if enabled) + 1 (scene index)
             if hasattr(self.inner_env.encoder, 'include_character_features'):
                 if self.inner_env.encoder.include_character_features:
-                    self.state_dim = 800
+                    self.state_dim = 801  # 768 + 32 + 1
                 else:
-                    self.state_dim = 768
+                    self.state_dim = 769  # 768 + 1
                 self.observation_space = spaces.Box(
                     low=-np.inf, high=np.inf, shape=(self.state_dim,), dtype=np.float32
                 )
