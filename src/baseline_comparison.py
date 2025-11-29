@@ -21,6 +21,7 @@ except ImportError:
 from story_env import MultiStoryEnvGym
 from dataset_manager import DatasetManager
 from dqn_train import DQNAgent
+from train_and_evaluate import load_trained_agent
 
 
 class RandomBaseline:
@@ -65,6 +66,9 @@ def evaluate_baseline(env: MultiStoryEnvGym, baseline, num_episodes: int = 100) 
     ending_rewards = []
     ending_qualities = []
     
+    # Progress indicator
+    print(f"   Progress: ", end="", flush=True)
+    
     for episode in range(num_episodes):
         state, _ = env.reset()
         done = False
@@ -76,7 +80,12 @@ def evaluate_baseline(env: MultiStoryEnvGym, baseline, num_episodes: int = 100) 
         
         while not done:
             action = baseline.act(state)
-            next_state, reward, done, _, info = env.step(action)
+            step_result = env.step(action)
+            if len(step_result) == 5:
+                next_state, reward, terminated, truncated, info = step_result
+                done = terminated or truncated
+            else:
+                next_state, reward, done, _, info = step_result
             
             total_reward += reward
             steps += 1
@@ -99,6 +108,12 @@ def evaluate_baseline(env: MultiStoryEnvGym, baseline, num_episodes: int = 100) 
         ending_rewards.append(episode_ending_reward)
         if episode_ending_quality is not None:
             ending_qualities.append(episode_ending_quality)
+        
+        # Progress indicator (every 10 episodes or at end)
+        if (episode + 1) % 10 == 0 or (episode + 1) == num_episodes:
+            print(f"{episode + 1}/{num_episodes} ", end="", flush=True)
+    
+    print()  # New line after progress
     
     return {
         'name': baseline.name,
@@ -121,20 +136,17 @@ def evaluate_dqn_agent(env: MultiStoryEnvGym, agent: DQNAgent,
     
     Args:
         env: Environment instance
-        agent: DQN agent
+        agent: DQN agent (will be loaded from model_path)
         model_path: Path to saved model
         num_episodes: Number of episodes to evaluate
     
     Returns:
         Dictionary with evaluation metrics
     """
-    # Load trained model
-    if os.path.exists(model_path):
-        agent.q_net.load_state_dict(torch.load(model_path))
-        agent.q_net.eval()
-        print(f"✅ Loaded model from {model_path}")
-    else:
-        print(f"⚠️  Model not found at {model_path}, using untrained agent")
+    # Load trained agent with correct dimensions
+    state_dim = env.state_dim
+    action_size = env.action_space.n
+    agent = load_trained_agent(model_path, state_dim=state_dim, action_size=action_size)
     
     # Set epsilon to 0 for evaluation (no exploration)
     original_epsilon = agent.epsilon
@@ -145,6 +157,9 @@ def evaluate_dqn_agent(env: MultiStoryEnvGym, agent: DQNAgent,
     true_continuation_picks = []
     ending_rewards = []
     ending_qualities = []
+    
+    # Progress indicator
+    print(f"   Progress: ", end="", flush=True)
     
     for episode in range(num_episodes):
         state, _ = env.reset()
@@ -157,7 +172,12 @@ def evaluate_dqn_agent(env: MultiStoryEnvGym, agent: DQNAgent,
         
         while not done:
             action = agent.act(state, action_size=env.action_space.n)
-            next_state, reward, done, _, info = env.step(action)
+            step_result = env.step(action)
+            if len(step_result) == 5:
+                next_state, reward, terminated, truncated, info = step_result
+                done = terminated or truncated
+            else:
+                next_state, reward, done, _, info = step_result
             
             total_reward += reward
             steps += 1
@@ -180,6 +200,12 @@ def evaluate_dqn_agent(env: MultiStoryEnvGym, agent: DQNAgent,
         ending_rewards.append(episode_ending_reward)
         if episode_ending_quality is not None:
             ending_qualities.append(episode_ending_quality)
+        
+        # Progress indicator (every 10 episodes or at end)
+        if (episode + 1) % 10 == 0 or (episode + 1) == num_episodes:
+            print(f"{episode + 1}/{num_episodes} ", end="", flush=True)
+    
+    print()  # New line after progress
     
     # Restore epsilon
     agent.epsilon = original_epsilon
@@ -198,15 +224,15 @@ def evaluate_dqn_agent(env: MultiStoryEnvGym, agent: DQNAgent,
     }
 
 
-def compare_baselines(num_episodes: int = 100, use_generation: bool = False,
-                     use_stochastic_emotions: bool = True):
+def compare_baselines(num_episodes: int = 100, use_generation: bool = None,
+                     use_stochastic_emotions: bool = None):
     """
     Compare DQN agent against Random and Oracle baselines.
     
     Args:
         num_episodes: Number of episodes for evaluation
-        use_generation: Whether to use generation mode
-        use_stochastic_emotions: Whether to use stochastic emotions
+        use_generation: Whether to use generation mode (None = use from config)
+        use_stochastic_emotions: Whether to use stochastic emotions (None = use from config)
     """
     print("=" * 70)
     print("Baseline Comparison: Random vs Oracle vs DQN Agent")
@@ -216,6 +242,12 @@ def compare_baselines(num_episodes: int = 100, use_generation: bool = False,
     if not config or not os.path.exists(config.CSV_STORIES_PATH):
         print("❌ Dataset not found. Cannot run baseline comparison.")
         return
+    
+    # Use config defaults if not specified
+    if use_generation is None:
+        use_generation = getattr(config, 'USE_GENERATION', False) if config else False
+    if use_stochastic_emotions is None:
+        use_stochastic_emotions = getattr(config, 'USE_STOCHASTIC_EMOTIONS', True) if config else True
     
     dataset_manager = DatasetManager(
         csv_path=config.CSV_STORIES_PATH,
@@ -250,34 +282,27 @@ def compare_baselines(num_episodes: int = 100, use_generation: bool = False,
     
     # Evaluate Random Baseline
     print("🎲 Evaluating Random Baseline...")
+    print(f"   (This may take a few minutes with generation mode - generating 2 continuations per step)")
     random_baseline = RandomBaseline(action_size)
     results['random'] = evaluate_baseline(env, random_baseline, num_episodes)
     print(f"✅ Random baseline complete\n")
     
     # Evaluate Oracle Baseline
     print("🔮 Evaluating Oracle Baseline...")
+    print(f"   (This may take a few minutes with generation mode - generating 2 continuations per step)")
     oracle_baseline = OracleBaseline(action_size)
     results['oracle'] = evaluate_baseline(env, oracle_baseline, num_episodes)
     print(f"✅ Oracle baseline complete\n")
     
     # Evaluate DQN Agent
     print("🤖 Evaluating DQN Agent...")
+    print(f"   (This may take a few minutes with generation mode - generating 2 continuations per step)")
     model_path = config.MODEL_SAVE_PATH if config else "models/saved_dqn.pt"
     
-    agent_config = config.AGENT_CONFIG.copy() if config else {
-        'gamma': 0.9,
-        'lr': 1e-3,
-        'batch_size': 32,
-        'buffer_size': 10000,
-        'epsilon_decay': 0.995,
-        'epsilon_min': 0.1,
-        'target_update_frequency': 10
-    }
-    agent_config['state_size'] = state_dim
-    agent_config['action_size'] = action_size
-    
-    agent = DQNAgent(**agent_config)
-    results['dqn'] = evaluate_dqn_agent(env, agent, model_path, num_episodes)
+    # Create a dummy agent (will be replaced in evaluate_dqn_agent)
+    # The actual agent will be loaded with correct dimensions inside evaluate_dqn_agent
+    dummy_agent = DQNAgent(state_size=state_dim, action_size=action_size)
+    results['dqn'] = evaluate_dqn_agent(env, dummy_agent, model_path, num_episodes)
     print(f"✅ DQN agent evaluation complete\n")
     
     # Print comparison
@@ -322,15 +347,21 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Compare baselines with DQN agent')
     parser.add_argument('--episodes', type=int, default=100, help='Number of evaluation episodes')
-    parser.add_argument('--generation', action='store_true', help='Use generation mode')
-    parser.add_argument('--stochastic-emotions', action='store_true', default=True,
-                       help='Use stochastic emotional transitions')
+    parser.add_argument('--no-generation', action='store_true',
+                       help='Disable generation mode (default: generation enabled)')
+    parser.add_argument('--no-stochastic-emotions', action='store_true',
+                       help='Disable stochastic emotional transitions (default: use from config)')
     
     args = parser.parse_args()
     
+    # Default to generation=True, unless --no-generation is specified
+    use_gen = False if args.no_generation else True
+    # If --no-stochastic-emotions is specified, disable; otherwise None (will use config)
+    use_stoch = False if args.no_stochastic_emotions else None
+    
     compare_baselines(
         num_episodes=args.episodes,
-        use_generation=args.generation,
-        use_stochastic_emotions=args.stochastic_emotions
+        use_generation=use_gen,
+        use_stochastic_emotions=use_stoch
     )
 

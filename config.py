@@ -57,12 +57,15 @@ AGENT_CONFIG = {
 
 # Story generation settings
 GENERATION_CONFIG = {
-    'model_name': 'gpt2',  # Language model for generation ('gpt2', 'distilgpt2', etc.)
+    'model_name': 'distilgpt2',  # Use distilgpt2 for faster generation (2x faster than gpt2)
     'num_generated_options': 2,  # Number of generated continuations to create
-    'max_length': 50,  # Maximum length of generated text
-    'temperature_range': (0.6, 0.8),  # Lower temperature for better quality (was 0.7-0.9)
+    'max_length': 30,  # Further reduced for faster generation (30 tokens = ~1 sentence)
+    'temperature_range': (0.7, 0.8),  # Narrower range for faster convergence
     'filter_inappropriate': True,  # Filter inappropriate language
-    'max_attempts': 5  # Maximum attempts to generate acceptable continuations
+    'max_attempts': 2,  # Reduced to 2 for faster generation (batch generation helps)
+    'use_batch_generation': True,  # Generate multiple sequences in parallel (faster)
+    'num_return_sequences': 2,  # Generate 2 sequences at once instead of one-by-one
+    'use_half_precision': True  # Use FP16 for 2x speedup on GPU
 }
 
 # Training settings

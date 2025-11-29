@@ -1,5 +1,4 @@
 venv/
-/models
 **/__pycache__/
 *.pyc
 *.pyo
@@ -7,3 +6,4 @@ venv/
 .Python
 /data/storycommonsense_data/
 .DS_Store
+/data/atomic_data/

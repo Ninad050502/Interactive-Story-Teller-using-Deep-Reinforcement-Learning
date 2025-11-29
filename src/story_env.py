@@ -73,14 +73,17 @@ class StoryEnv:
                 gen_config = getattr(config, 'GENERATION_CONFIG', {})
                 filter_inappropriate = gen_config.get('filter_inappropriate', True)
                 model_name = gen_config.get('model_name', 'gpt2')
+                use_half_precision = gen_config.get('use_half_precision', True)
             except:
                 filter_inappropriate = True
                 model_name = 'gpt2'
+                use_half_precision = True
             
             if story_generator is None:
                 self.story_generator = StoryGenerator(
                     model_name=model_name,
-                    filter_inappropriate=filter_inappropriate
+                    filter_inappropriate=filter_inappropriate,
+                    use_half_precision=use_half_precision
                 )
             else:
                 self.story_generator = story_generator
@@ -152,18 +155,24 @@ class StoryEnv:
                     max_length = gen_config.get('max_length', 50)
                     temp_range = gen_config.get('temperature_range', (0.6, 0.8))
                     max_attempts = gen_config.get('max_attempts', 5)
+                    use_batch = gen_config.get('use_batch_generation', True)
+                    num_return_seq = gen_config.get('num_return_sequences', 2)
                 except:
                     num_options = 2
                     max_length = 50
                     temp_range = (0.6, 0.8)
                     max_attempts = 5
+                    use_batch = True
+                    num_return_seq = 2
                 
                 generated_options = self.story_generator.generate_continuations(
                     context=story_context,
                     num_options=num_options,
                     max_length=max_length,
                     temperature_range=temp_range,
-                    max_attempts=max_attempts
+                    max_attempts=max_attempts,
+                    use_batch_generation=use_batch,
+                    num_return_sequences=num_return_seq
                 )
             except Exception as e:
                 # Fallback if generation fails
@@ -605,14 +614,17 @@ class MultiStoryEnvGym(gym.Env):
                 gen_config = getattr(config, 'GENERATION_CONFIG', {})
                 filter_inappropriate = gen_config.get('filter_inappropriate', True)
                 model_name = gen_config.get('model_name', 'gpt2')
+                use_half_precision = gen_config.get('use_half_precision', True)
             except:
                 filter_inappropriate = True
                 model_name = 'gpt2'
+                use_half_precision = True
             
             if story_generator is None:
                 self.story_generator = StoryGenerator(
                     model_name=model_name,
-                    filter_inappropriate=filter_inappropriate
+                    filter_inappropriate=filter_inappropriate,
+                    use_half_precision=use_half_precision
                 )
             else:
                 self.story_generator = story_generator

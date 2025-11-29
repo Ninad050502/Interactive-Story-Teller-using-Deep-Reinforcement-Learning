@@ -2,19 +2,32 @@ import torch
 import numpy as np
 from transformers import AutoTokenizer, AutoModel
 from typing import Optional, Dict, List
+import hashlib
 
 class StateEncoder:
     """
     Encodes story sentences into dense vectors using DistilBERT.
     Can optionally include character emotion and motivation features.
+    OPTIMIZED: Includes embedding cache and half precision for speed.
     """
 
     def __init__(self, model_name: str = "distilbert-base-uncased", 
-                 include_character_features: bool = False):
+                 include_character_features: bool = False,
+                 use_cache: bool = True,
+                 use_half_precision: bool = True):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name)
+        
+        # Use half precision for faster inference (if CUDA available)
+        if use_half_precision and self.device == "cuda":
+            self.model = self.model.half()  # FP16 for 2x speedup on GPU
+        
+        self.model.to(self.device)
         self.model.eval()  # inference mode
         self.include_character_features = include_character_features
+        self.use_cache = use_cache
+        self.embedding_cache = {}  # Cache for sentence embeddings
         
         # Plutchik emotions (8 categories)
         self.plutchik_emotions = ['joy', 'trust', 'fear', 'surprise', 
@@ -37,6 +50,7 @@ class StateEncoder:
         If include_character_features is True and character_info is provided,
         concatenates character features to the sentence embedding.
         If scene_index is provided, includes it in the state.
+        OPTIMIZED: Uses caching to avoid recomputing embeddings.
         
         Args:
             text: Sentence text
@@ -46,23 +60,53 @@ class StateEncoder:
         Returns:
             Tensor of shape (768,), (800,), (769,), or (801,) depending on features
         """
-        with torch.no_grad():
-            inputs = self.tokenizer(
-                text, return_tensors="pt", truncation=True, max_length=64
-            )
-            outputs = self.model(**inputs)
-            # mean-pool over tokens
-            embedding = outputs.last_hidden_state.mean(dim=1)
-            sentence_embedding = embedding.squeeze(0)
+        # Check cache first (only for base sentence embedding, not character features)
+        cache_key = None
+        if self.use_cache and character_info is None:
+            cache_key = hashlib.md5(text.encode()).hexdigest()
+            if cache_key in self.embedding_cache:
+                sentence_embedding = self.embedding_cache[cache_key].clone()
+            else:
+                with torch.no_grad():
+                    inputs = self.tokenizer(
+                        text, return_tensors="pt", truncation=True, max_length=64
+                    )
+                    # Move inputs to device
+                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                    outputs = self.model(**inputs)
+                    # mean-pool over tokens
+                    embedding = outputs.last_hidden_state.mean(dim=1)
+                    sentence_embedding = embedding.squeeze(0).cpu()  # Cache on CPU
+                    self.embedding_cache[cache_key] = sentence_embedding.clone()
+        else:
+            # No cache or has character features (need to recompute)
+            with torch.no_grad():
+                inputs = self.tokenizer(
+                    text, return_tensors="pt", truncation=True, max_length=64
+                )
+                # Move inputs to device
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                outputs = self.model(**inputs)
+                # mean-pool over tokens
+                embedding = outputs.last_hidden_state.mean(dim=1)
+                sentence_embedding = embedding.squeeze(0)
+        
+        # Ensure sentence_embedding is on CPU for consistency (if from cache)
+        if sentence_embedding.device.type == 'cpu' and self.device == 'cuda':
+            sentence_embedding = sentence_embedding.to(self.device)
         
         # Add character features if available
         if self.include_character_features and character_info:
             char_features = self._encode_character_features(character_info)
+            if self.device == 'cuda':
+                char_features = char_features.to(self.device)
             sentence_embedding = torch.cat([sentence_embedding, char_features])
         
         # Add scene index if provided
         if scene_index is not None:
             scene_tensor = torch.tensor([scene_index], dtype=torch.float32)
+            if self.device == 'cuda':
+                scene_tensor = scene_tensor.to(self.device)
             sentence_embedding = torch.cat([sentence_embedding, scene_tensor])
         
         return sentence_embedding

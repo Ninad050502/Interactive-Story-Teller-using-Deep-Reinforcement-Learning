@@ -24,20 +24,38 @@ from story_env import MultiStoryEnvGym
 from training_utils import evaluate_agent
 
 
-def load_trained_agent(model_path: str, state_dim: int = 768):
+def load_trained_agent(model_path: str, state_dim: int = 768, action_size: int = None):
     """
     Load trained agent from saved model.
     
     Args:
         model_path: Path to saved model
-        state_dim: State dimension (768 or 800)
+        state_dim: State dimension (768, 769, 800, or 801)
+        action_size: Action size (2 or 3). If None, will try to infer from config or model.
     
     Returns:
         DQNAgent instance with loaded weights
     """
+    # Determine action size
+    if action_size is None:
+        # Try to infer from config (should match training)
+        if config:
+            use_generation = getattr(config, 'USE_GENERATION', False)
+            action_size = 3 if use_generation else 2
+        else:
+            # Fallback: try to infer from saved model
+            try:
+                checkpoint = torch.load(model_path, map_location='cpu')
+                # Check the last layer size
+                if 'net.4.weight' in checkpoint:
+                    action_size = checkpoint['net.4.weight'].shape[0]
+                else:
+                    action_size = 2  # Default fallback
+            except:
+                action_size = 2  # Default fallback
+    
     # Create agent with same config as training
     agent_config = config.AGENT_CONFIG.copy() if config else {
-        'action_size': 2,
         'gamma': 0.9,
         'lr': 1e-3,
         'batch_size': 32,
@@ -47,6 +65,7 @@ def load_trained_agent(model_path: str, state_dim: int = 768):
         'target_update_frequency': 10
     }
     agent_config['state_size'] = state_dim
+    agent_config['action_size'] = action_size  # Use determined action size
     
     agent = DQNAgent(**agent_config)
     
@@ -54,7 +73,7 @@ def load_trained_agent(model_path: str, state_dim: int = 768):
     if os.path.exists(model_path):
         agent.q_net.load_state_dict(torch.load(model_path, map_location='cpu'))
         agent.target_net.load_state_dict(agent.q_net.state_dict())
-        print(f"✅ Loaded model from {model_path}")
+        print(f"✅ Loaded model from {model_path} (action_size={action_size}, state_dim={state_dim})")
     else:
         raise FileNotFoundError(f"Model not found: {model_path}")
     
@@ -111,12 +130,14 @@ def evaluate_on_split(split: str, model_path: str,
         use_stochastic_emotions=use_stochastic_emotions
     )
     
-    # Get state dimension from environment
+    # Get state dimension and action size from environment
     state_dim = env.state_dim
+    action_size = env.action_space.n
     print(f"State dimension: {state_dim}")
+    print(f"Action size: {action_size}")
     
-    # Load trained agent
-    agent = load_trained_agent(model_path, state_dim=state_dim)
+    # Load trained agent (use action size from environment to match training)
+    agent = load_trained_agent(model_path, state_dim=state_dim, action_size=action_size)
     
     # Evaluate agent (epsilon = 0, no exploration)
     print(f"\nEvaluating for {num_episodes} episodes (no exploration)...")
@@ -141,7 +162,7 @@ def train_and_evaluate(training_episodes: int = 1000,
                       test_episodes: int = 100,
                       eval_max_stories: Optional[int] = None,
                       use_annotations: bool = True,
-                      skip_training: bool = False):
+                      skip_training: bool = True):
     """
     Complete workflow: Train model and evaluate on dev/test splits.
     
@@ -355,7 +376,7 @@ if __name__ == "__main__":
         test_episodes=TEST_EPISODES,
         eval_max_stories=EVAL_MAX_STORIES,
         use_annotations=config.USE_ANNOTATIONS if config else True,
-        skip_training=False  # Set to True to skip training and only evaluate
+        skip_training=True  # Set to True to skip training and only evaluate
     )
     
     if results:
