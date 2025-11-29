@@ -38,10 +38,12 @@ def visualize_agent(num_stories=3, model_path=None):
         max_stories=num_stories * 2 # Load a few more to skip short ones if any
     )
     
-    # Create ATOMIC generator
+    # Create ATOMIC generator with similarity enabled for better quality during visualization
     atomic_generator = None
     if config.USE_ATOMIC:
-        atomic_generator = create_atomic_generator(config.ATOMIC_CONFIG)
+        atomic_config = config.ATOMIC_CONFIG.copy()
+        atomic_config['use_similarity'] = True  # Enable similarity for visualization
+        atomic_generator = create_atomic_generator(atomic_config)
         
     # Create environment
     env = MultiStoryEnvGym(

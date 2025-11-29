@@ -70,11 +70,12 @@ VERBOSE = True  # Print training progress
 # ATOMIC Integration Settings
 USE_ATOMIC = True  # Whether to use ATOMIC for alternative continuations
 ATOMIC_CONFIG = {
-    'mode': 'template',  # 'comet', 'file', or 'template'
-    'atomic_file_path': None,  # Path to ATOMIC TSV file (if mode='file')
-    'comet_model_name': None,  # HuggingFace model name (if mode='comet')
+    'mode': 'file',  # 'comet' (uses GPT-2), 'file' (ATOMIC CSV), or 'template' (fallback)
+    'atomic_file_path': os.path.join(DATA_DIR, "atomic_data", "v4_atomic_all.csv"),  # Path to ATOMIC CSV file (if mode='file')
+    'comet_model_name': 'gpt2',  # HuggingFace model name (if mode='comet') - 'gpt2', 'gpt2-medium', etc.
     'num_alternatives': 2,  # Number of alternative continuations per step
-    'relations': ['xEffect', 'xWant', 'xReact']  # ATOMIC relations to use
+    'relations': ['xEffect', 'xWant', 'xReact'],  # ATOMIC relations to use
+    'use_similarity': False  # Use semantic similarity (False = faster training, True = better quality for eval/visualization)
 }
 
 # Action space settings (updated when ATOMIC is enabled)

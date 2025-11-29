@@ -56,6 +56,7 @@ class StoryEnv:
         self.atomic_generator = atomic_generator
         self.use_atomic = atomic_generator is not None
         self.current_continuations: List[Tuple[str, str]] = []  # [(text, relation), ...]
+        self.current_original_sentence = None  # Track original sentence for ATOMIC generation
         
         self.next_prob = next_prob
         self.n_states = len(self.story)
@@ -70,6 +71,7 @@ class StoryEnv:
         """Reset environment to start of story."""
         self.idx = 0
         state_text = self.story[self.idx]
+        self.current_original_sentence = state_text  # Track original sentence
         
         # Get character info for current line if annotations available
         char_info = None
@@ -114,17 +116,21 @@ class StoryEnv:
                         return None, 0.0, True, {}
                     self.idx = next_idx
                     state_text = self.story[self.idx]
+                    self.current_original_sentence = state_text  # Update original sentence
                 else:
                     # Use ATOMIC alternative (treat as continuing but with alternative text)
-                    # For now, we'll advance index but note it's an alternative
+                    # Advance index but keep original sentence for next generation
                     next_idx = min(self.idx + 1, self.n_states - 1)
                     self.idx = next_idx
                     state_text = selected_text  # Use the ATOMIC-generated continuation
+                    # Keep current_original_sentence as the actual story sentence at this index
+                    # This will be updated when we generate next continuations
             else:
                 # Invalid action, default to true next
                 next_idx = min(self.idx + 1, self.n_states - 1)
                 self.idx = next_idx
                 state_text = self.story[self.idx] if self.idx < self.n_states else ""
+                self.current_original_sentence = state_text  # Update original sentence
         else:
             # Non-ATOMIC mode: use probability-based transitions
             if random.random() < self.next_prob:
@@ -165,11 +171,16 @@ class StoryEnv:
                 reward = 1.0 if (self.idx == prev_idx + 1) else -1.0
         
         # Generate continuations for next step (if using ATOMIC and not done)
+        # IMPORTANT: Always generate from the ORIGINAL story sentence, not from ATOMIC-generated text
         if self.use_atomic and self.idx < self.n_states - 1:
+            # Get the actual story sentence at current index (not ATOMIC-generated text)
+            original_sentence = self.story[self.idx] if self.idx < self.n_states else state_text
             true_next = self.story[self.idx + 1] if (self.idx + 1) < self.n_states else ""
+            # Always generate alternatives from the original story sentence
             self.current_continuations = self.atomic_generator.generate_alternatives(
-                state_text, true_next
+                original_sentence, true_next
             )
+            self.current_original_sentence = original_sentence  # Track for next step
         
         # Update previous state and character info
         self.prev_state = next_state
