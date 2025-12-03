@@ -174,10 +174,12 @@ def visualize_episode(env: MultiStoryEnvGym, agent: DQNAgent,
         print(f"Total Steps: {step}")
         print(f"Total Reward: {format_reward(total_reward)}")
         print(f"Average Reward per Step: {format_reward(total_reward / step)}")
-        print(f"True Continuation Choices: {episode_info['chose_true_count']} / {max(1, step - 1)}")
-        print(f"Generated Continuation Choices: {episode_info['chose_generated_count']} / {max(1, step - 1)}")
-        if step > 1:
-            true_rate = episode_info['chose_true_count'] / (step - 1) * 100
+        # Count total choices (all steps have choices in generation mode)
+        total_choices = episode_info['chose_true_count'] + episode_info['chose_generated_count']
+        print(f"True Continuation Choices: {episode_info['chose_true_count']} / {total_choices}")
+        print(f"Generated Continuation Choices: {episode_info['chose_generated_count']} / {total_choices}")
+        if total_choices > 0:
+            true_rate = episode_info['chose_true_count'] / total_choices * 100
             print(f"True Continuation Pick Rate: {true_rate:.1f}%")
         print_separator()
         print()
@@ -277,8 +279,11 @@ def visualize_multiple_episodes(num_episodes: int = 5,
     
     if total_steps > 0:
         total_true_choices = sum(true_choice_counts)
-        true_rate = total_true_choices / (total_steps - num_episodes) * 100  # Subtract num_episodes for first steps
-        print(f"Overall True Continuation Pick Rate: {true_rate:.1f}%")
+        total_generated_choices = sum(ep['chose_generated_count'] for ep in all_episodes)
+        total_choices = total_true_choices + total_generated_choices
+        if total_choices > 0:
+            true_rate = total_true_choices / total_choices * 100
+            print(f"Overall True Continuation Pick Rate: {true_rate:.1f}%")
     
     print()
     print_separator("=", 80)
