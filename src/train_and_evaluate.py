@@ -345,8 +345,8 @@ def train_and_evaluate(training_episodes: int = 1000,
 
 
 if __name__ == "__main__":
-    # Configuration
-    TRAINING_EPISODES = config.TRAINING_CONFIG['episodes'] if config else 1000
+    # Configuration - use getattr with defaults for safety
+    TRAINING_EPISODES = getattr(config, 'TRAINING_CONFIG', {}).get('episodes', 1000) if config else 1000
     DEV_EPISODES = 100  # Number of episodes to evaluate on dev split
     TEST_EPISODES = 100  # Number of episodes to evaluate on test split
     
@@ -363,9 +363,9 @@ if __name__ == "__main__":
     print(f"  Test evaluation episodes: {TEST_EPISODES}")
     print(f"  Train max stories: {TRAIN_MAX_STORIES if TRAIN_MAX_STORIES else 'All'}")
     print(f"  Eval max stories: {EVAL_MAX_STORIES if EVAL_MAX_STORIES else 'All'}")
-    print(f"  Use annotations: {config.USE_ANNOTATIONS if config else True}")
-    print(f"  Use generation: {config.USE_GENERATION if config else False}")
-    print(f"  Stochastic emotions: {config.USE_STOCHASTIC_EMOTIONS if config else True}")
+    print(f"  Use annotations: {getattr(config, 'USE_ANNOTATIONS', True) if config else True}")
+    print(f"  Use generation: {getattr(config, 'USE_GENERATION', False) if config else False}")
+    print(f"  Stochastic emotions: {getattr(config, 'USE_STOCHASTIC_EMOTIONS', True) if config else True}")
     print("="*60)
     
     # Run complete pipeline
@@ -375,13 +375,13 @@ if __name__ == "__main__":
         dev_episodes=DEV_EPISODES,
         test_episodes=TEST_EPISODES,
         eval_max_stories=EVAL_MAX_STORIES,
-        use_annotations=config.USE_ANNOTATIONS if config else True,
+        use_annotations=getattr(config, 'USE_ANNOTATIONS', True) if config else True,
         skip_training=True  # Set to True to skip training and only evaluate
     )
     
     if results:
         print("\n🎉 All steps completed successfully!")
-        print(f"   Model saved at: {config.MODEL_SAVE_PATH if config else '../models/saved_dqn.pt'}")
+        print(f"   Model saved at: {getattr(config, 'MODEL_SAVE_PATH', '../models/saved_dqn.pt') if config else '../models/saved_dqn.pt'}")
         print(f"\n📊 Final Performance Summary:")
         print(f"   Train performance: {results['train']['avg_reward']:.2f} ± {results['train']['std_reward']:.2f}")
         print(f"   Dev performance:   {results['dev']['avg_reward']:.2f} ± {results['dev']['std_reward']:.2f}")
