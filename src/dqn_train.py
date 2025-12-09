@@ -125,7 +125,7 @@ def train_dqn_legacy(episodes=100, story_path="../data/story_sample.json"):
         print(f"Episode {ep+1:03d} | Reward: {total:.2f} | Epsilon: {agent.epsilon:.3f}")
 
     torch.save(agent.q_net.state_dict(), "../models/saved_dqn.pt")
-    print("✅ Training complete. Model saved.")
+    print("Training complete. Model saved.")
     return rewards
 
 # ----------------- Training Loop (Multi-Story) -----------------
@@ -192,7 +192,7 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
     rewards = []
     episode_rewards = []
     
-    print(f"\n🚀 Starting training on {len(dataset_manager)} stories...")
+    print(f"\nStarting training on {len(dataset_manager)} stories...")
     print(f"Episodes: {episodes} | State dim: {state_dim} | Action size: {action_size} | Epsilon: {agent.epsilon:.3f}")
     print(f"Enhanced rewards: {use_annotations} | Generation mode: {use_generation} | Reward weights: {reward_weights}\n")
     
@@ -245,8 +245,8 @@ def train_dqn_multi_story(csv_path: str, json_annotations_path: Optional[str] = 
     torch.save(agent.q_net.state_dict(), model_path)
     
     # Print final statistics
-    print(f"\n✅ Training complete. Model saved to {model_path}")
-    print(f"\n📊 Training Statistics:")
+    print(f"\nTraining complete. Model saved to {model_path}")
+    print(f"\nTraining Statistics:")
     print(f"  Final epsilon: {agent.epsilon:.3f}")
     print(f"  Total experiences: {len(agent.buffer)}")
     print(f"  Average reward (all episodes): {np.mean(rewards):.2f}")

@@ -70,7 +70,7 @@ GENERATION_CONFIG = {
 
 # Training settings
 TRAINING_CONFIG = {
-    'episodes': 1000,
+    'episodes': 200,
     'eval_frequency': 50,  # Evaluate on dev set every N episodes
     'save_frequency': 100,  # Save checkpoint every N episodes
     'early_stopping_patience': 200,  # Stop if no improvement for N episodes

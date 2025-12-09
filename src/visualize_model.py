@@ -36,13 +36,8 @@ def print_section(title: str, char="="):
 
 
 def format_reward(reward: float) -> str:
-    """Format reward with color coding."""
-    if reward >= 7.0:
-        return f"🟢 {reward:.2f}"  # High reward (green)
-    elif reward >= 4.0:
-        return f"🟡 {reward:.2f}"  # Medium reward (yellow)
-    else:
-        return f"🔴 {reward:.2f}"  # Low reward (red)
+    """Format reward."""
+    return f"{reward:.2f}"
 
 
 def visualize_episode(env: MultiStoryEnvGym, agent: DQNAgent, 
@@ -77,7 +72,7 @@ def visualize_episode(env: MultiStoryEnvGym, agent: DQNAgent,
         episode_info['story_title'] = story_info.get('title', 'Unknown')
     
     if verbose:
-        print_section(f"📖 EPISODE {episode_num}: {episode_info['story_title']}")
+        print_section(f"EPISODE {episode_num}: {episode_info['story_title']}")
         print(f"Story ID: {episode_info['story_id']}")
         print()
     
@@ -128,36 +123,36 @@ def visualize_episode(env: MultiStoryEnvGym, agent: DQNAgent,
             print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             
             # Show Q-values
-            print(f"\n🎯 Q-Values (Expected Future Reward):")
+            print(f"\nQ-Values (Expected Future Reward):")
             action_names = ["True Continuation", "Generated Option 1", "Generated Option 2"]
             for i, (q_val, name) in enumerate(zip(q_values, action_names)):
-                marker = "👉" if i == action else "  "
+                marker = "->" if i == action else "  "
                 print(f"  {marker} Action {i} ({name}): {q_val:.3f}")
             
             # Show action taken
             action_name = action_names[action]
-            print(f"\n✅ Action Taken: {action} ({action_name})")
+            print(f"\nAction Taken: {action} ({action_name})")
             
             # Show options if available
             if step_info['options']:
-                print(f"\n📋 Available Options:")
+                print(f"\nAvailable Options:")
                 for i, option in enumerate(step_info['options']):
-                    marker = "✅" if i == action else "  "
+                    marker = "[SELECTED]" if i == action else "          "
                     print(f"  {marker} Option {i}: {option[:80]}..." if len(option) > 80 else f"  {marker} Option {i}: {option}")
             
             # Show selected line
-            print(f"\n📝 Selected Continuation:")
+            print(f"\nSelected Continuation:")
             print(f"   {step_info['line']}")
             
             # Show reward
-            print(f"\n💰 Step Reward: {format_reward(reward)}")
+            print(f"\nStep Reward: {format_reward(reward)}")
             if step_info['ending_reward'] > 0:
-                print(f"   🎁 Ending Quality Bonus: +{step_info['ending_reward']:.2f}")
+                print(f"   Ending Quality Bonus: +{step_info['ending_reward']:.2f}")
                 if step_info['ending_quality']:
-                    print(f"   📊 Ending Quality Score: {step_info['ending_quality']:.2f}")
+                    print(f"   Ending Quality Score: {step_info['ending_quality']:.2f}")
             
             # Show cumulative reward
-            print(f"\n📈 Cumulative Reward: {format_reward(total_reward)}")
+            print(f"\nCumulative Reward: {format_reward(total_reward)}")
             print()
         
         state = next_state
@@ -169,7 +164,7 @@ def visualize_episode(env: MultiStoryEnvGym, agent: DQNAgent,
     
     if verbose:
         print_separator()
-        print(f"📊 EPISODE SUMMARY")
+        print(f"EPISODE SUMMARY")
         print_separator()
         print(f"Total Steps: {step}")
         print(f"Total Reward: {format_reward(total_reward)}")
@@ -201,13 +196,13 @@ def visualize_multiple_episodes(num_episodes: int = 5,
         max_stories: Optional limit on stories
     """
     print_separator("=", 80)
-    print("  🎬 MODEL BEHAVIOR VISUALIZATION")
+    print("  MODEL BEHAVIOR VISUALIZATION")
     print_separator("=", 80)
     print()
     
     # Load dataset
     if not config or not os.path.exists(config.CSV_STORIES_PATH):
-        print("❌ Dataset not found. Cannot visualize.")
+        print("Error: Dataset not found. Cannot visualize.")
         return
     
     csv_path = config.CSV_STORIES_PATH
@@ -220,7 +215,7 @@ def visualize_multiple_episodes(num_episodes: int = 5,
         max_stories=max_stories or 50  # Limit for visualization
     )
     
-    print(f"📚 Loaded {len(dataset_manager)} stories from {split} split\n")
+    print(f"Loaded {len(dataset_manager)} stories from {split} split\n")
     
     # Create environment
     reward_weights = config.REWARD_WEIGHTS if config else None
@@ -238,7 +233,7 @@ def visualize_multiple_episodes(num_episodes: int = 5,
     state_dim = env.state_dim
     action_size = env.action_space.n
     
-    print(f"⚙️  Environment Configuration:")
+    print(f"Environment Configuration:")
     print(f"   State dimension: {state_dim}")
     print(f"   Action size: {action_size}")
     print(f"   Generation mode: {use_generation}")
@@ -249,7 +244,7 @@ def visualize_multiple_episodes(num_episodes: int = 5,
     model_path = model_path or (config.MODEL_SAVE_PATH if config else "../models/saved_dqn.pt")
     agent = load_trained_agent(model_path, state_dim=state_dim, action_size=action_size)
     
-    print(f"✅ Model loaded successfully\n")
+    print(f"Model loaded successfully\n")
     print_separator("=", 80)
     print()
     
@@ -264,7 +259,7 @@ def visualize_multiple_episodes(num_episodes: int = 5,
     
     # Summary statistics
     print_separator("=", 80)
-    print("  📊 OVERALL STATISTICS")
+    print("  OVERALL STATISTICS")
     print_separator("=", 80)
     
     total_rewards = [ep['total_reward'] for ep in all_episodes]
@@ -287,7 +282,7 @@ def visualize_multiple_episodes(num_episodes: int = 5,
     
     print()
     print_separator("=", 80)
-    print("✅ Visualization complete!")
+    print("Visualization complete!")
     print_separator("=", 80)
 
 
@@ -303,13 +298,13 @@ def visualize_single_story(story_id: Optional[str] = None,
         split: Dataset split to use
     """
     print_separator("=", 80)
-    print("  📖 SINGLE STORY VISUALIZATION")
+    print("  SINGLE STORY VISUALIZATION")
     print_separator("=", 80)
     print()
     
     # Load dataset
     if not config or not os.path.exists(config.CSV_STORIES_PATH):
-        print("❌ Dataset not found.")
+        print("Error: Dataset not found.")
         return
     
     csv_path = config.CSV_STORIES_PATH
@@ -345,7 +340,7 @@ def visualize_single_story(story_id: Optional[str] = None,
     model_path = model_path or (config.MODEL_SAVE_PATH if config else "../models/saved_dqn.pt")
     agent = load_trained_agent(model_path, state_dim=state_dim, action_size=action_size)
     
-    print(f"✅ Model loaded successfully\n")
+    print(f"Model loaded successfully\n")
     
     # Visualize the episode
     visualize_episode(env, agent, episode_num=1, verbose=True)

@@ -240,7 +240,7 @@ def compare_baselines(num_episodes: int = 100, use_generation: bool = None,
     
     # Load dataset
     if not config or not os.path.exists(config.CSV_STORIES_PATH):
-        print("❌ Dataset not found. Cannot run baseline comparison.")
+        print("Error: Dataset not found. Cannot run baseline comparison.")
         return
     
     # Use config defaults if not specified
@@ -256,7 +256,7 @@ def compare_baselines(num_episodes: int = 100, use_generation: bool = None,
         max_stories=100  # Limit for faster evaluation
     )
     
-    print(f"\n📚 Loaded {len(dataset_manager)} stories from test split\n")
+    print(f"\nLoaded {len(dataset_manager)} stories from test split\n")
     
     # Create environment
     reward_weights = config.REWARD_WEIGHTS if config else None
@@ -281,21 +281,21 @@ def compare_baselines(num_episodes: int = 100, use_generation: bool = None,
     results = {}
     
     # Evaluate Random Baseline
-    print("🎲 Evaluating Random Baseline...")
+    print("Evaluating Random Baseline...")
     print(f"   (This may take a few minutes with generation mode - generating 2 continuations per step)")
     random_baseline = RandomBaseline(action_size)
     results['random'] = evaluate_baseline(env, random_baseline, num_episodes)
-    print(f"✅ Random baseline complete\n")
+    print(f"Random baseline complete\n")
     
     # Evaluate Oracle Baseline
-    print("🔮 Evaluating Oracle Baseline...")
+    print("Evaluating Oracle Baseline...")
     print(f"   (This may take a few minutes with generation mode - generating 2 continuations per step)")
     oracle_baseline = OracleBaseline(action_size)
     results['oracle'] = evaluate_baseline(env, oracle_baseline, num_episodes)
-    print(f"✅ Oracle baseline complete\n")
+    print(f"Oracle baseline complete\n")
     
     # Evaluate DQN Agent
-    print("🤖 Evaluating DQN Agent...")
+    print("Evaluating DQN Agent...")
     print(f"   (This may take a few minutes with generation mode - generating 2 continuations per step)")
     model_path = config.MODEL_SAVE_PATH if config else "models/saved_dqn.pt"
     
@@ -303,11 +303,11 @@ def compare_baselines(num_episodes: int = 100, use_generation: bool = None,
     # The actual agent will be loaded with correct dimensions inside evaluate_dqn_agent
     dummy_agent = DQNAgent(state_size=state_dim, action_size=action_size)
     results['dqn'] = evaluate_dqn_agent(env, dummy_agent, model_path, num_episodes)
-    print(f"✅ DQN agent evaluation complete\n")
+    print(f"DQN agent evaluation complete\n")
     
     # Print comparison
     print("=" * 70)
-    print("📊 BASELINE COMPARISON RESULTS")
+    print("BASELINE COMPARISON RESULTS")
     print("=" * 70)
     
     for name in ['random', 'oracle', 'dqn']:
@@ -327,16 +327,16 @@ def compare_baselines(num_episodes: int = 100, use_generation: bool = None,
     if 'random' in results and 'dqn' in results:
         improvement = results['dqn']['avg_reward'] - results['random']['avg_reward']
         improvement_pct = (improvement / abs(results['random']['avg_reward']) * 100) if results['random']['avg_reward'] != 0 else 0
-        print(f"\n📈 DQN Improvement over Random: {improvement:+.2f} ({improvement_pct:+.1f}%)")
+        print(f"\nDQN Improvement over Random: {improvement:+.2f} ({improvement_pct:+.1f}%)")
     
     # Gap to oracle
     if 'oracle' in results and 'dqn' in results:
         gap = results['oracle']['avg_reward'] - results['dqn']['avg_reward']
         gap_pct = (gap / abs(results['oracle']['avg_reward']) * 100) if results['oracle']['avg_reward'] != 0 else 0
-        print(f"📉 Gap to Oracle: {gap:.2f} ({gap_pct:.1f}%)")
+        print(f"Gap to Oracle: {gap:.2f} ({gap_pct:.1f}%)")
     
     print("\n" + "=" * 70)
-    print("✅ Baseline comparison complete!")
+    print("Baseline comparison complete!")
     print("=" * 70)
     
     return results

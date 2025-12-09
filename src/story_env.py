@@ -11,7 +11,7 @@ from story_generator import StoryGenerator
 from emotional_transition import EmotionalTransitionModel
 
 
-# ----------- 1️⃣ Original StoryEnv (Legacy Support) -----------
+# ----------- 1. Original StoryEnv (Legacy Support) -----------
 class StoryEnv:
     def __init__(self, story_path: Optional[str] = None, 
                  story_data: Optional[Dict] = None, 
@@ -532,7 +532,7 @@ class StoryEnv:
         self.reset()
 
 
-# ----------- 2️⃣ Gym Wrapper (Legacy Support) -----------
+# ----------- 2. Gym Wrapper (Legacy Support) -----------
 class StoryEnvGym(gym.Env):
     metadata = {"render.modes": ["human"]}
 
@@ -577,7 +577,7 @@ class StoryEnvGym(gym.Env):
         self.inner_env.set_story(story_data)
 
 
-# ----------- 3️⃣ Multi-Story Environment (New) -----------
+# ----------- 3. Multi-Story Environment (New) -----------
 class MultiStoryEnvGym(gym.Env):
     """
     Environment that supports multiple stories from a dataset.

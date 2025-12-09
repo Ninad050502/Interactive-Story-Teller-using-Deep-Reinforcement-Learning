@@ -73,7 +73,7 @@ def load_trained_agent(model_path: str, state_dim: int = 768, action_size: int =
     if os.path.exists(model_path):
         agent.q_net.load_state_dict(torch.load(model_path, map_location='cpu'))
         agent.target_net.load_state_dict(agent.q_net.state_dict())
-        print(f"✅ Loaded model from {model_path} (action_size={action_size}, state_dim={state_dim})")
+        print(f"Loaded model from {model_path} (action_size={action_size}, state_dim={state_dim})")
     else:
         raise FileNotFoundError(f"Model not found: {model_path}")
     
@@ -145,7 +145,7 @@ def evaluate_on_split(split: str, model_path: str,
     
     # Print summary
     print(f"\n{'='*60}")
-    print(f"📊 {split.upper()} Split Evaluation Summary")
+    print(f"{split.upper()} Split Evaluation Summary")
     print(f"{'='*60}")
     print(f"  Episodes: {metrics['num_episodes']}")
     print(f"  Average Reward: {metrics['avg_reward']:.2f} ± {metrics['std_reward']:.2f}")
@@ -179,7 +179,7 @@ def train_and_evaluate(training_episodes: int = 1000,
         Dictionary with dev and test evaluation metrics
     """
     print("="*60)
-    print("🚀 DQN Training and Evaluation Pipeline")
+    print("DQN Training and Evaluation Pipeline")
     print("="*60)
     
     # Get model path
@@ -189,7 +189,7 @@ def train_and_evaluate(training_episodes: int = 1000,
     train_metrics = None
     if not skip_training:
         print("\n" + "="*60)
-        print("📚 STEP 1: Training the Model")
+        print("STEP 1: Training the Model")
         print("="*60)
         print("This step includes:")
         print("  - Loading dataset from CSV")
@@ -230,17 +230,17 @@ def train_and_evaluate(training_episodes: int = 1000,
                 'avg_length': 5.0  # Stories have 5 sentences, so average length is ~5 steps
             }
         
-        print(f"\n✅ Training complete. Model saved to {model_path}")
+        print(f"\nTraining complete. Model saved to {model_path}")
     else:
-        print("\n⏭️  Skipping training (using existing model)")
+        print("\nSkipping training (using existing model)")
         if not os.path.exists(model_path):
-            print(f"❌ Error: Model not found at {model_path}")
+            print(f"Error: Model not found at {model_path}")
             print("Please train the model first or set skip_training=False")
             return None
     
     # Step 1.5: Evaluate on train split (with epsilon=0, no exploration)
     print("\n" + "="*60)
-    print("📊 STEP 1.5: Evaluating on TRAIN Split (No Exploration)")
+    print("STEP 1.5: Evaluating on TRAIN Split (No Exploration)")
     print("="*60)
     print("This step includes:")
     print("  - Loading train dataset")
@@ -260,7 +260,7 @@ def train_and_evaluate(training_episodes: int = 1000,
     
     # Step 2: Evaluate on dev split
     print("\n" + "="*60)
-    print("📊 STEP 2: Evaluating on DEV Split")
+    print("STEP 2: Evaluating on DEV Split")
     print("="*60)
     print("This step includes:")
     print("  - Loading dev dataset")
@@ -280,7 +280,7 @@ def train_and_evaluate(training_episodes: int = 1000,
     
     # Step 3: Evaluate on test split
     print("\n" + "="*60)
-    print("📊 STEP 3: Evaluating on TEST Split")
+    print("STEP 3: Evaluating on TEST Split")
     print("="*60)
     print("This step includes:")
     print("  - Loading test dataset")
@@ -300,7 +300,7 @@ def train_and_evaluate(training_episodes: int = 1000,
     
     # Step 4: Print final comparison (Train, Dev, Test)
     print("\n" + "="*60)
-    print("📊 FINAL RESULTS: Train vs Dev vs Test Comparison")
+    print("FINAL RESULTS: Train vs Dev vs Test Comparison")
     print("="*60)
     print(f"  Train - Average Reward: {train_eval_metrics['avg_reward']:.2f} ± {train_eval_metrics['std_reward']:.2f}")
     print(f"  Train - Reward Range: [{train_eval_metrics['min_reward']:.2f}, {train_eval_metrics['max_reward']:.2f}]")
@@ -324,16 +324,16 @@ def train_and_evaluate(training_episodes: int = 1000,
     dev_test_diff = abs(test_metrics['avg_reward'] - dev_metrics['avg_reward'])
     
     if train_dev_diff < 0.5 and dev_test_diff < 0.5:
-        print("  ✅ Good generalization (small differences across all splits)")
+        print("  Good generalization (small differences across all splits)")
     elif train_dev_diff > 1.0:
-        print("  ⚠️  Large gap between train and dev - possible overfitting")
+        print("  Warning: Large gap between train and dev - possible overfitting")
     elif dev_test_diff > 0.5:
-        print("  ⚠️  Large difference between dev and test - possible overfitting")
+        print("  Warning: Large difference between dev and test - possible overfitting")
     else:
-        print("  ⚠️  Moderate differences - monitor for overfitting")
+        print("  Warning: Moderate differences - monitor for overfitting")
     
     print("="*60)
-    print("✅ Complete pipeline finished!")
+    print("Complete pipeline finished!")
     print("="*60)
     
     return {
@@ -356,7 +356,7 @@ if __name__ == "__main__":
     EVAL_MAX_STORIES = None   # None = use all evaluation stories
     
     print("\n" + "="*60)
-    print("📋 Configuration")
+    print("Configuration")
     print("="*60)
     print(f"  Training episodes: {TRAINING_EPISODES}")
     print(f"  Dev evaluation episodes: {DEV_EPISODES}")
@@ -376,19 +376,19 @@ if __name__ == "__main__":
         test_episodes=TEST_EPISODES,
         eval_max_stories=EVAL_MAX_STORIES,
         use_annotations=getattr(config, 'USE_ANNOTATIONS', True) if config else True,
-        skip_training=True  # Set to True to skip training and only evaluate
+        skip_training=False  # Set to False to train, True to skip training and only evaluate
     )
     
     if results:
-        print("\n🎉 All steps completed successfully!")
+        print("\nAll steps completed successfully!")
         print(f"   Model saved at: {getattr(config, 'MODEL_SAVE_PATH', '../models/saved_dqn.pt') if config else '../models/saved_dqn.pt'}")
-        print(f"\n📊 Final Performance Summary:")
+        print(f"\nFinal Performance Summary:")
         print(f"   Train performance: {results['train']['avg_reward']:.2f} ± {results['train']['std_reward']:.2f}")
         print(f"   Dev performance:   {results['dev']['avg_reward']:.2f} ± {results['dev']['std_reward']:.2f}")
         print(f"   Test performance:  {results['test']['avg_reward']:.2f} ± {results['test']['std_reward']:.2f}")
         
         if results.get('training_metrics'):
-            print(f"\n📈 Training Performance (with exploration):")
+            print(f"\nTraining Performance (with exploration):")
             print(f"   Average reward during training: {results['training_metrics']['avg_reward']:.2f} ± {results['training_metrics']['std_reward']:.2f}")
             print(f"   Final average (last 10): {results['training_metrics']['final_avg_reward']:.2f}")
 

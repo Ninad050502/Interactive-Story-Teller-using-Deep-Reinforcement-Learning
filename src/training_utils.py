@@ -191,7 +191,7 @@ def evaluate_agent(env, agent, num_episodes: int = 10, verbose: bool = True) -> 
     }
     
     if verbose:
-        print(f"\n📊 Evaluation Results:")
+        print(f"\nEvaluation Results:")
         print(f"  Average Reward: {metrics['avg_reward']:.2f} ± {metrics['std_reward']:.2f}")
         print(f"  Reward Range: [{metrics['min_reward']:.2f}, {metrics['max_reward']:.2f}]")
         print(f"  Average Length: {metrics['avg_length']:.2f} ± {metrics['std_length']:.2f}")
